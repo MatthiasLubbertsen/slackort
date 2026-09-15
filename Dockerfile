@@ -19,4 +19,6 @@ RUN mkdir -p /app/data
 ENV NODE_ENV=production
 ENV DB_PATH=/app/data/hestia.db
 
+EXPOSE 7777 7778
+
 CMD ["node", "dist/index.js"]

@@ -6,7 +6,6 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    # Uncomment if you set API_PORT in .env and want the stats API reachable
-    # from outside the container (point it at a different host port if you like):
-    # ports:
-    #   - "${API_PORT}:${API_PORT}"
+    ports:
+      - "7777:7777" # placeholder page, hestia.matthiaz.dev
+      - "7778:7778" # read-only stats API, api.hestia.matthiaz.dev

@@ -58,8 +58,8 @@ function infoModalView(ticket: Ticket, openerName: string): ModalView {
           ...CANNED_CLOSE_REASONS.map((reason) => ({
             type: "button" as const,
             text: { type: "plain_text" as const, text: reason.label, emoji: true },
-            action_id: "close_with_reason",
-            value: `${ticket.id}:${reason.key}`,
+            action_id: `close_with_reason:${reason.key}`,
+            value: String(ticket.id),
           })),
           {
             type: "button" as const,
@@ -133,14 +133,15 @@ export function registerUserInfoModal(): void {
     await ack();
   });
 
-  app.action("close_with_reason", async ({ ack, body, client, action }) => {
+  app.action(/^close_with_reason:/, async ({ ack, body, client, action }) => {
     await ack();
 
     if (action.type !== "button" || !action.value) return;
     if (body.type !== "block_actions" || !body.view) return;
 
-    const [ticketIdRaw, reasonKey] = action.value.split(":");
-    const ticket = getTicketById(Number(ticketIdRaw));
+    const actionId = body.actions[0].action_id;
+    const reasonKey = actionId.slice("close_with_reason:".length);
+    const ticket = getTicketById(Number(action.value));
     const reason = findCannedCloseReason(reasonKey);
     if (!ticket || !reason) return;
 

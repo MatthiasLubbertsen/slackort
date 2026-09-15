@@ -11,7 +11,7 @@ function staffOverflowAccessory(ticket: Ticket) {
     action_id: USER_INFO_ACTION_ID,
     options: [
       {
-        text: { type: "plain_text" as const, text: "🔎 User info (staff)" },
+        text: { type: "plain_text" as const, text: "🔎 Support Scouts only" },
         value: String(ticket.id),
       },
     ],
@@ -25,7 +25,7 @@ export function buildTicketIntroBlocks(ticket: Ticket, openerName: string): Know
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `Hey ${openerName}! 🔥 Consider this ticket officially by the fire, a helper will be along shortly to warm things up.`,
+        text: `Hey ${openerName}! Thanks for reaching out, a helper will be along shortly.`,
       },
       accessory: staffOverflowAccessory(ticket),
     },
@@ -45,7 +45,7 @@ export function buildTicketIntroBlocks(ticket: Ticket, openerName: string): Know
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "✅ Resolve", emoji: true },
+          text: { type: "plain_text", text: "I get it now", emoji: true },
           style: "primary",
           action_id: "resolve_ticket",
           value: String(ticket.id),
@@ -104,24 +104,7 @@ export function buildReopenedAnnouncementBlocks(reopenedBy: string): KnownBlock[
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `This ticket has been reopened by <@${reopenedBy}>! 🔄 Back on the fire we go.`,
-      },
-    },
-  ];
-}
-
-/** Nudges someone who posted a new top-level message while they already have a ticket open. */
-export function buildStrayMessageNudgeBlocks(
-  openerName: string,
-  threadLink: string | undefined
-): KnownBlock[] {
-  const threadRef = threadLink ? `<${threadLink}|in that thread>` : "in your existing thread";
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `Hey ${openerName}! 👋 Looks like you've already got a ticket open, mind continuing ${threadRef} instead? Keeps everything cozy in one place. Closing this one so it doesn't clutter the queue!`,
+        text: `This ticket has been reopened by <@${reopenedBy}>! We're back on it.`,
       },
     },
   ];

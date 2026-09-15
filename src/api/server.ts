@@ -37,31 +37,21 @@ function serializeTicket(ticket: ReturnType<typeof getTicketById>) {
 }
 
 /**
- * Starts a read-only JSON API for ticket stats and details. No write
- * endpoints exist anywhere in this file, on purpose. Only starts when both
- * API_PORT and API_TOKEN are set.
+ * Starts a read-only, unauthenticated JSON API for ticket stats and details.
+ * No write endpoints exist anywhere in this file, on purpose -- that's the
+ * whole reason it's safe to leave open with no API key. Set API_PORT to 0
+ * to turn it off entirely.
  */
 export function registerApiServer(): void {
-  if (!config.apiPort || !config.apiToken) {
-    console.log("Stats API disabled (set API_PORT and API_TOKEN to enable)");
+  if (!config.apiPort) {
+    console.log("Stats API disabled (API_PORT=0)");
     return;
   }
 
   const api = express();
 
-  // No auth required, safe to point an uptime checker at this.
   api.get("/health", (_req, res) => {
     res.json({ ok: true });
-  });
-
-  api.use("/api", (req, res, next) => {
-    const header = req.header("authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
-    if (token !== config.apiToken) {
-      res.status(401).json({ error: "unauthorized" });
-      return;
-    }
-    next();
   });
 
   api.get("/api/overview", (_req, res) => {

@@ -21,7 +21,7 @@ export async function publishHomeView(userId: string): Promise<void> {
   const blocks: KnownBlock[] = [
     {
       type: "header",
-      text: { type: "plain_text", text: "🔥 Hestia", emoji: true },
+      text: { type: "plain_text", text: "Hestia", emoji: true },
     },
     {
       type: "section",

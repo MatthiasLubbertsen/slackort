@@ -1,7 +1,7 @@
 import { app } from "../../slack/app";
 import { config } from "../../config";
 import { createTicket, getOpenTicketForUser, setReplyTs } from "../../db/tickets";
-import { buildTicketIntroBlocks, buildStrayMessageNudgeBlocks } from "./blocks";
+import { buildTicketIntroBlocks } from "./blocks";
 import { getFriendlyName } from "../../slack/userName";
 
 const SUBJECT_MAX_LENGTH = 120;
@@ -28,22 +28,24 @@ export function registerCreateTicketFromMessage(): void {
     if (!("user" in message) || !message.user) return;
 
     const openerId = message.user;
-    const openerName = await getFriendlyName(client, openerId);
 
-    // Someone posting again outside their existing ticket's thread -- point them
-    // back at it instead of spinning up a second, disconnected ticket.
+    // Someone posting again shortly after opening a ticket is almost always an
+    // accidental double-post (they hit enter twice, or split their message across
+    // a couple of lines). Only redirect within that window -- after it, this is
+    // probably a genuinely separate issue, so let it become its own ticket.
     const existingTicket = getOpenTicketForUser(message.channel, openerId);
-    if (existingTicket) {
+    if (existingTicket && Date.now() - existingTicket.created_at < config.duplicateWindowMs) {
       const permalink = await client.chat
         .getPermalink({ channel: existingTicket.channel_id, message_ts: existingTicket.message_ts })
         .then((r) => r.permalink)
         .catch(() => undefined);
+      const threadRef = permalink ? `<${permalink}|in that thread>` : "in your existing thread";
 
-      await client.chat.postMessage({
+      await client.chat.postEphemeral({
         channel: message.channel,
         thread_ts: message.ts,
-        text: `Hey ${openerName}, you've already got a ticket open, please continue in that thread!`,
-        blocks: buildStrayMessageNudgeBlocks(openerName, permalink),
+        user: openerId,
+        text: `Hey <@${openerId}>, you've already got a ticket open, please continue ${threadRef} instead! Closing this one so it doesn't clutter the queue.`,
       });
 
       await client.reactions.add({
@@ -54,6 +56,7 @@ export function registerCreateTicketFromMessage(): void {
       return;
     }
 
+    const openerName = await getFriendlyName(client, openerId);
     const subject = subjectFromText("text" in message ? message.text : undefined);
 
     await client.reactions.add({

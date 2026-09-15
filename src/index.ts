@@ -6,6 +6,7 @@ import { registerUserInfoModal } from "./features/tickets/userInfoModal";
 import { registerHome } from "./features/home/publishHome";
 import { registerDailySummary } from "./features/summary/dailySummary";
 import { registerApiServer } from "./api/server";
+import { registerWebServer } from "./web/server";
 
 registerCreateTicketFromMessage();
 registerResolveTicket();
@@ -13,8 +14,9 @@ registerUserInfoModal();
 registerHome();
 registerDailySummary();
 registerApiServer();
+registerWebServer();
 
 (async () => {
   await app.start();
-  console.log("🔥 Hestia is running (Socket Mode)");
+  console.log("Hestia is running (Socket Mode)");
 })();
