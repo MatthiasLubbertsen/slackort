@@ -26,4 +26,8 @@ export const config = {
   timezone: process.env.TIMEZONE || "UTC",
 
   dbPath: process.env.DB_PATH || "./data/hestia.db",
+
+  // Optional read-only JSON API. Both must be set for it to start.
+  apiPort: process.env.API_PORT ? Number(process.env.API_PORT) : undefined,
+  apiToken: process.env.API_TOKEN,
 };

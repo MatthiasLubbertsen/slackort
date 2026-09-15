@@ -1,6 +1,6 @@
 # Hestia
 
-A support ticket bot for Slack. Everything lives inside Slack: no web dashboard, no separate database UI, nothing to host beyond the bot process itself.
+A support ticket bot for Slack. Everything lives inside Slack, no web dashboard, no separate database UI, nothing to host beyond the bot process itself (plus an optional read-only JSON API if you want to pull stats into something else).
 
 ## Features
 
@@ -9,17 +9,20 @@ A support ticket bot for Slack. Everything lives inside Slack: no web dashboard,
 - Either the **ticket opener** or anyone in your **support user group** can resolve or reopen a ticket
 - On resolve: the Resolve button disappears, :thinking_face: flips to :white_check_mark: on the original message, and a **new** thread message announces who resolved it, with a **Reopen** button
 - On reopen: a brand new "reopened by" message is posted (the old resolved announcement is left alone as history, just loses its button), and the Resolve button comes back
-- A tiny, staff-only overflow menu on the greeting opens a modal with the opener's ticket stats and a one-click link into the Stardance admin panel
+- A tiny, staff-only overflow menu on the greeting opens a modal with the opener's ticket stats, a one-click link into the Stardance admin panel, canned quick-close replies, and a "wipe thread" button
+- Non-helpers (including the ticket opener) get bounced with an ephemeral message right in the thread if they try to click that menu
 - Post again outside your ticket's thread while it's still open (like a second "hi" as its own message) and Hestia points you back to the thread instead of opening a duplicate
 - **App Home** tab shows the current open-ticket count, a link to the FAQ canvas, and a helper leaderboard (this week + all time)
 - A **daily summary** is posted automatically (opened / resolved / still-open counts, average resolution time, oldest open tickets)
+- An optional **read-only stats API** for pulling ticket/leaderboard data into something else
 
 ## Stack
 
 - TypeScript
-- [`@slack/bolt`](https://slack.dev/bolt-js/) running in **Socket Mode**, no public URL or web server needed
+- [`@slack/bolt`](https://slack.dev/bolt-js/) running in **Socket Mode**, no public URL needed for the bot itself
 - `better-sqlite3` for storage, a single local file, no separate database server
 - `node-cron` for the daily summary schedule
+- `express` for the optional read-only stats API (only runs if you configure it)
 
 ## Project layout
 
@@ -27,6 +30,8 @@ A support ticket bot for Slack. Everything lives inside Slack: no web dashboard,
 src/
   config.ts                 env var loading / validation
   index.ts                  entrypoint, wires everything up
+  api/
+    server.ts                optional read-only stats API (express)
   db/
     index.ts                sqlite connection + schema + migrations
     tickets.ts               ticket queries (create, resolve, reopen, leaderboard, stats)
@@ -37,9 +42,10 @@ src/
   features/
     tickets/
       blocks.ts                    Block Kit builders (intro, resolved, reopened, stray nudge)
+      cannedCloseReasons.ts        the quick-close reason list, add more here
       createTicketFromMessage.ts   message listener that opens a ticket
       resolveTicket.ts             resolve + reopen button handlers
-      userInfoModal.ts             staff-only overflow menu + user info modal
+      userInfoModal.ts             staff-only overflow menu, user info, quick close, wipe thread
     home/
       publishHome.ts         App Home view + leaderboard rendering
     summary/
@@ -81,9 +87,23 @@ The sqlite file lives at `./data/hestia.db` on the host (bind-mounted into the c
 - **Resolving:** clicking **Resolve** checks that the clicker is either the opener or a member of `SUPPORT_USERGROUP_ID` (looked up live via `usergroups.users.list`, cached 5 minutes). If allowed, the ticket is marked resolved, the original threaded reply is rewritten with the Resolve button removed, a brand new message announces who resolved it with a Reopen button (`resolution_ts` tracks that message), and the reaction on the original message flips from :thinking_face: to :white_check_mark:.
 - **Reopening:** clicking **Reopen** (opener or helper again) leaves the resolved announcement's text untouched and just strips its button, restores the Resolve button on the original reply, posts a brand new "reopened by" message, and flips the reaction back to :thinking_face:.
 - **Staying threaded:** if someone who already has an open ticket posts *another* top-level message instead of replying in their ticket's thread, Hestia skips creating a second ticket, replies pointing them at the existing thread (with a permalink when it can get one), and marks that stray message :white_check_mark: so it doesn't sit there looking unhandled.
-- **Staff-only user info:** the small overflow menu (⋮) on the greeting message opens a modal for helpers only, showing the opener's ticket stats (opened / resolved / currently open) and a link into `STARDANCE_ADMIN_URL` pre-filled with their Slack user ID.
+- **Staff-only user info:** the small overflow menu (⋮) on the greeting message checks `isHelper` before doing anything; a non-helper (opener included) gets an ephemeral "staff only" reply posted right in the ticket's thread. Helpers get a modal with the opener's ticket stats (opened / resolved / currently open) and a link into `STARDANCE_ADMIN_URL` pre-filled with their Slack user ID.
+- **Quick close:** the same modal lists buttons from `cannedCloseReasons.ts`, each one resolves the ticket and posts its exact message as the resolution announcement instead of the usual "resolved by X" line, so it never names which helper clicked it (it's still credited to them internally for the leaderboard). Add a new `{ key, label, message }` entry to that file to add another one, nothing else needs touching.
+- **Wipe thread:** also in that modal, a red "🧹 Wipe thread" button (with a confirmation dialog first) deletes Hestia's own messages (the greeting reply and, if it exists, the resolution announcement) and reactions from the thread, then deletes the ticket row entirely. It never touches the opener's original message.
 - **Leaderboard / App Home:** on `app_home_opened`, queries `tickets` grouped by `resolved_by` for this week and all time.
 - **Daily summary:** a `node-cron` job (default `0 9 * * *`, timezone from `TIMEZONE`) posts opened/resolved/still-open counts, average resolution time, and the oldest still-open tickets to `SUMMARY_CHANNEL_ID`.
+
+## Stats API (optional)
+
+Set both `API_PORT` and `API_TOKEN` in `.env` to turn on a small read-only JSON API (no write endpoints exist anywhere in `src/api/server.ts`). Leave either unset and it just logs that it's disabled and does nothing else.
+
+- `GET /health`, no auth, safe to point an uptime checker at (handy since you're already running Uptime Kuma).
+- Everything else needs `Authorization: Bearer <API_TOKEN>`:
+  - `GET /api/overview`, open ticket count + weekly/all-time leaderboards
+  - `GET /api/tickets?status=open|resolved&limit=&offset=`, paginated ticket list
+  - `GET /api/tickets/:id`, one ticket plus a live Slack permalink
+  - `GET /api/users/:userId/stats`, opened/resolved/open counts for one Slack user ID
+  - `GET /api/leaderboard?range=week|all`, just the leaderboard rows
 
 ## Notes
 

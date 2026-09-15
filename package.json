@@ -1,7 +1,7 @@
 {
   "name": "hestia",
   "version": "1.0.0",
-  "description": "Hestia, a Slack-native support ticket bot -- FAQ canvas, ticket resolution, daily summaries, and a helper leaderboard, no web dashboard required.",
+  "description": "Hestia, a Slack-native support ticket bot -- FAQ canvas, ticket resolution, daily summaries, a helper leaderboard, and an optional read-only stats API.",
   "main": "dist/index.js",
   "type": "commonjs",
   "scripts": {
@@ -14,10 +14,12 @@
     "@slack/bolt": "^3.22.0",
     "better-sqlite3": "^11.10.0",
     "dotenv": "^16.4.5",
+    "express": "^4.21.1",
     "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.14.10",
     "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.1",

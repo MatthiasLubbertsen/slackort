@@ -57,18 +57,25 @@ export function buildTicketIntroBlocks(ticket: Ticket, openerName: string): Know
   return blocks;
 }
 
-/** A fresh message announcing the ticket was resolved. The Reopen button is optional so a past announcement can be left as read-only history. */
+/**
+ * A fresh message announcing the ticket was resolved. If the ticket has a
+ * `resolution_note` (set when closed with a canned reason), that text is used
+ * verbatim instead of the default "resolved by X" line, so it never names
+ * whoever clicked the canned option. The Reopen button is optional so a past
+ * announcement can be left as read-only history.
+ */
 export function buildResolvedAnnouncementBlocks(
   ticket: Ticket,
   { withReopenButton = true }: { withReopenButton?: boolean } = {}
 ): KnownBlock[] {
+  const text =
+    ticket.resolution_note ??
+    `This ticket has just been marked as resolved by <@${ticket.resolved_by}>! 🎉 More questions? Send another message in <#${ticket.channel_id}>, we're more than happy to help you out.`;
+
   const blocks: KnownBlock[] = [
     {
       type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `This ticket has just been marked as resolved by <@${ticket.resolved_by}>! 🎉 More questions? Send another message in <#${ticket.channel_id}>, we're more than happy to help you out.`,
-      },
+      text: { type: "mrkdwn", text },
     },
   ];
 

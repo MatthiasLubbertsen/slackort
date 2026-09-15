@@ -6,3 +6,7 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    # Uncomment if you set API_PORT in .env and want the stats API reachable
+    # from outside the container (point it at a different host port if you like):
+    # ports:
+    #   - "${API_PORT}:${API_PORT}"

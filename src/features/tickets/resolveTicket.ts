@@ -22,6 +22,7 @@ export function registerResolveTicket(): void {
     if (ticket.status === "resolved") {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
+        thread_ts: ticket.message_ts,
         user: body.user.id,
         text: "That ticket's already resolved :white_check_mark:",
       });
@@ -32,6 +33,7 @@ export function registerResolveTicket(): void {
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
+        thread_ts: ticket.message_ts,
         user: body.user.id,
         text: "Only the ticket opener or a support helper can resolve this one.",
       });
@@ -90,6 +92,7 @@ export function registerResolveTicket(): void {
     if (ticket.status === "open") {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
+        thread_ts: ticket.message_ts,
         user: body.user.id,
         text: "That ticket's already open :thinking_face:",
       });
@@ -101,6 +104,7 @@ export function registerResolveTicket(): void {
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
+        thread_ts: ticket.message_ts,
         user: body.user.id,
         text: "Only the ticket opener or a support helper can reopen this one.",
       });
@@ -115,7 +119,7 @@ export function registerResolveTicket(): void {
       await client.chat.update({
         channel: ticket.channel_id,
         ts: ticket.resolution_ts,
-        text: `This ticket was marked as resolved by <@${ticket.resolved_by}>.`,
+        text: ticket.resolution_note ?? `This ticket was marked as resolved by <@${ticket.resolved_by}>.`,
         blocks: buildResolvedAnnouncementBlocks(ticket, { withReopenButton: false }),
       });
     }

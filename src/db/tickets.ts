@@ -8,6 +8,7 @@ export interface Ticket {
   message_ts: string;
   reply_ts: string | null;
   resolution_ts: string | null;
+  resolution_note: string | null;
   opener_id: string;
   subject: string;
   status: TicketStatus;
@@ -44,18 +45,27 @@ export function getTicketById(ticketId: number): Ticket | undefined {
   return db.prepare(`SELECT * FROM tickets WHERE id = ?`).get(ticketId) as Ticket | undefined;
 }
 
-export function resolveTicket(ticketId: number, resolvedBy: string): Ticket {
+/**
+ * Marks a ticket resolved. `note`, when given, replaces the default "resolved
+ * by X" announcement text (used for canned close reasons, which never name
+ * who clicked them).
+ */
+export function resolveTicket(ticketId: number, resolvedBy: string, note?: string): Ticket {
   db.prepare(
-    `UPDATE tickets SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE id = ?`
-  ).run(Date.now(), resolvedBy, ticketId);
+    `UPDATE tickets SET status = 'resolved', resolved_at = ?, resolved_by = ?, resolution_note = ? WHERE id = ?`
+  ).run(Date.now(), resolvedBy, note ?? null, ticketId);
   return getTicketById(ticketId)!;
 }
 
 export function reopenTicket(ticketId: number): Ticket {
   db.prepare(
-    `UPDATE tickets SET status = 'open', resolved_at = NULL, resolved_by = NULL WHERE id = ?`
+    `UPDATE tickets SET status = 'open', resolved_at = NULL, resolved_by = NULL, resolution_note = NULL WHERE id = ?`
   ).run(ticketId);
   return getTicketById(ticketId)!;
+}
+
+export function deleteTicket(ticketId: number): void {
+  db.prepare(`DELETE FROM tickets WHERE id = ?`).run(ticketId);
 }
 
 export function getOpenTicketForUser(channelId: string, openerId: string): Ticket | undefined {
@@ -112,6 +122,25 @@ export function openTicketsCreatedBefore(end: number): Ticket[] {
   return db
     .prepare(`SELECT * FROM tickets WHERE status = 'open' AND created_at < ?`)
     .all(end) as Ticket[];
+}
+
+export function listTickets(opts: {
+  status?: TicketStatus;
+  limit: number;
+  offset: number;
+}): { tickets: Ticket[]; total: number } {
+  const where = opts.status ? `WHERE status = ?` : "";
+  const params = opts.status ? [opts.status] : [];
+
+  const tickets = db
+    .prepare(`SELECT * FROM tickets ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(...params, opts.limit, opts.offset) as Ticket[];
+
+  const total = (
+    db.prepare(`SELECT COUNT(*) as c FROM tickets ${where}`).get(...params) as { c: number }
+  ).c;
+
+  return { tickets, total };
 }
 
 export interface LeaderboardRow {

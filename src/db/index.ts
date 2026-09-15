@@ -36,3 +36,4 @@ function ensureColumn(table: string, column: string, columnDdl: string): void {
 
 // Added after the initial release -- keeps older sqlite files working without a fresh install.
 ensureColumn("tickets", "resolution_ts", "resolution_ts TEXT");
+ensureColumn("tickets", "resolution_note", "resolution_note TEXT");

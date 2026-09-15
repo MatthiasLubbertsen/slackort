@@ -5,12 +5,14 @@ import { registerResolveTicket } from "./features/tickets/resolveTicket";
 import { registerUserInfoModal } from "./features/tickets/userInfoModal";
 import { registerHome } from "./features/home/publishHome";
 import { registerDailySummary } from "./features/summary/dailySummary";
+import { registerApiServer } from "./api/server";
 
 registerCreateTicketFromMessage();
 registerResolveTicket();
 registerUserInfoModal();
 registerHome();
 registerDailySummary();
+registerApiServer();
 
 (async () => {
   await app.start();
