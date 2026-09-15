@@ -1,11 +1,11 @@
 import { app } from "./slack/app";
 import "./db";
-import { registerOpenTicket } from "./features/tickets/openTicket";
+import { registerCreateTicketFromMessage } from "./features/tickets/createTicketFromMessage";
 import { registerResolveTicket } from "./features/tickets/resolveTicket";
 import { registerHome } from "./features/home/publishHome";
 import { registerDailySummary } from "./features/summary/dailySummary";
 
-registerOpenTicket();
+registerCreateTicketFromMessage();
 registerResolveTicket();
 registerHome();
 registerDailySummary();

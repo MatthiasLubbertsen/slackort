@@ -6,9 +6,9 @@ export interface Ticket {
   id: number;
   channel_id: string;
   message_ts: string;
+  reply_ts: string | null;
   opener_id: string;
   subject: string;
-  description: string | null;
   status: TicketStatus;
   created_at: number;
   resolved_at: number | null;
@@ -20,34 +20,30 @@ export function createTicket(input: {
   messageTs: string;
   openerId: string;
   subject: string;
-  description?: string;
 }): Ticket {
   const createdAt = Date.now();
-  db.prepare(
-    `INSERT INTO tickets (channel_id, message_ts, opener_id, subject, description, status, created_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?)`
-  ).run(
-    input.channelId,
-    input.messageTs,
-    input.openerId,
-    input.subject,
-    input.description ?? null,
-    createdAt
-  );
-  return getTicketByMessageTs(input.channelId, input.messageTs)!;
+  const result = db
+    .prepare(
+      `INSERT INTO tickets (channel_id, message_ts, opener_id, subject, status, created_at)
+       VALUES (?, ?, ?, ?, 'open', ?)`
+    )
+    .run(input.channelId, input.messageTs, input.openerId, input.subject, createdAt);
+  return getTicketById(Number(result.lastInsertRowid))!;
 }
 
-export function getTicketByMessageTs(channelId: string, messageTs: string): Ticket | undefined {
-  return db
-    .prepare(`SELECT * FROM tickets WHERE channel_id = ? AND message_ts = ?`)
-    .get(channelId, messageTs) as Ticket | undefined;
+export function setReplyTs(ticketId: number, replyTs: string): void {
+  db.prepare(`UPDATE tickets SET reply_ts = ? WHERE id = ?`).run(replyTs, ticketId);
+}
+
+export function getTicketById(ticketId: number): Ticket | undefined {
+  return db.prepare(`SELECT * FROM tickets WHERE id = ?`).get(ticketId) as Ticket | undefined;
 }
 
 export function resolveTicket(ticketId: number, resolvedBy: string): Ticket {
   db.prepare(
     `UPDATE tickets SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE id = ?`
   ).run(Date.now(), resolvedBy, ticketId);
-  return db.prepare(`SELECT * FROM tickets WHERE id = ?`).get(ticketId) as Ticket;
+  return getTicketById(ticketId)!;
 }
 
 export function countOpenTickets(): number {

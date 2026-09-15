@@ -4,10 +4,10 @@ A support ticket bot for Slack — **Slack** + **support**. Everything lives ins
 
 ## Features
 
-- **`/ticket`** slash command opens a modal, then posts the ticket as a message in your support channel
-- The ticket message reacts with :thinking_face: while open, and gets a **Resolve** button plus a **View FAQ** button (links straight to a Slack canvas)
+- **Just post in the support channel** — any top-level message there automatically opens a ticket, no slash command needed
+- The message gets a :thinking_face: reaction while open, and the bot replies **in a thread** with a **Resolve** button plus a **View FAQ** button (links straight to a Slack canvas)
 - Either the **ticket opener** or anyone in your **support user group** can resolve a ticket
-- On resolve: :thinking_face: is swapped for :white_check_mark:, and the message updates to show who closed it
+- On resolve: :thinking_face: is swapped for :white_check_mark: on the original message, and the threaded reply updates to show who closed it
 - **App Home** tab shows the current open-ticket count, a link to the FAQ canvas, and a helper leaderboard (this week + all time)
 - A **daily summary** is posted automatically (opened / resolved / still-open counts, average resolution time, oldest open tickets)
 
@@ -32,9 +32,9 @@ src/
     helpers.ts               "is this user a helper?" (usergroup lookup + cache)
   features/
     tickets/
-      blocks.ts              Block Kit builder for a ticket message
-      openTicket.ts          /ticket command + modal submission
-      resolveTicket.ts        resolve button handler
+      blocks.ts                    Block Kit builder for the threaded reply
+      createTicketFromMessage.ts   message listener that opens a ticket
+      resolveTicket.ts             resolve button handler
     home/
       publishHome.ts         App Home view + leaderboard rendering
     summary/
@@ -62,8 +62,8 @@ npm run build && npm start
 
 ## How it works
 
-- **Opening a ticket:** `/ticket` → modal (subject + optional details) → on submit, a message is posted to `SUPPORT_CHANNEL_ID` and reacted with :thinking_face:. A row is written to the `tickets` table keyed on the message's `channel_id` + `message_ts`.
-- **Resolving:** clicking **Resolve** checks that the clicker is either the opener or a member of `SUPPORT_USERGROUP_ID` (looked up live via `usergroups.users.list`, cached 5 minutes). If allowed, the ticket row is marked resolved, the message is rewritten to show who closed it, and the reaction flips from :thinking_face: to :white_check_mark:.
+- **Opening a ticket:** any plain top-level message posted in `SUPPORT_CHANNEL_ID` (not a thread reply, not from a bot, not an edit/join/etc.) reacts with :thinking_face: and gets a ticket row keyed on its `channel_id` + `message_ts`. The bot then replies in a thread on that message with the Resolve/FAQ controls -- that reply's `ts` is stored as `reply_ts` so it can be updated later. Keep discussing the issue right there in the thread.
+- **Resolving:** clicking **Resolve** (in the thread) checks that the clicker is either the opener or a member of `SUPPORT_USERGROUP_ID` (looked up live via `usergroups.users.list`, cached 5 minutes). If allowed, the ticket row is marked resolved, the threaded reply is rewritten to show who closed it, and the reaction on the original message flips from :thinking_face: to :white_check_mark:.
 - **Leaderboard / App Home:** on `app_home_opened`, queries `tickets` grouped by `resolved_by` for this week and all time.
 - **Daily summary:** a `node-cron` job (default `0 9 * * *`, timezone from `TIMEZONE`) posts opened/resolved/still-open counts, average resolution time, and the oldest still-open tickets to `SUMMARY_CHANNEL_ID`.
 
