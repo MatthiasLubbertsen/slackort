@@ -45,7 +45,7 @@ export function buildTicketIntroBlocks(ticket: Ticket, openerName: string): Know
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "I get it now", emoji: true },
+          text: { type: "plain_text", text: "i get it now" },
           style: "primary",
           action_id: "resolve_ticket",
           value: String(ticket.id),
@@ -70,7 +70,7 @@ export function buildResolvedAnnouncementBlocks(
 ): KnownBlock[] {
   const text =
     ticket.resolution_note ??
-    `This ticket has just been marked as resolved by <@${ticket.resolved_by}>! 🎉 More questions? Send another message in <#${ticket.channel_id}>, we're more than happy to help you out.`;
+    `This ticket has just been marked as resolved by <@${ticket.resolved_by}>! More questions? Send another message in <#${ticket.channel_id}>, we're more than happy to help you out.`;
 
   const blocks: KnownBlock[] = [
     {
@@ -86,7 +86,7 @@ export function buildResolvedAnnouncementBlocks(
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "↩️ Reopen", emoji: true },
+          text: { type: "plain_text", text: "reopen" },
           action_id: "reopen_ticket",
           value: String(ticket.id),
         },

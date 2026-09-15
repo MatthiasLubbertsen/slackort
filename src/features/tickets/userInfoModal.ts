@@ -1,7 +1,9 @@
 import type { KnownBlock, ModalView } from "@slack/bolt";
+import type { WebClient } from "@slack/web-api";
 import { app } from "../../slack/app";
 import { config } from "../../config";
 import {
+  claimTicket,
   getTicketById,
   deleteTicket,
   resolveTicket,
@@ -14,7 +16,8 @@ import { getFriendlyName } from "../../slack/userName";
 import { buildResolvedAnnouncementBlocks, buildTicketIntroBlocks } from "./blocks";
 import { CANNED_CLOSE_REASONS, findCannedCloseReason } from "./cannedCloseReasons";
 
-function infoModalView(ticket: Ticket, openerName: string): ModalView {
+async function infoModalView(client: WebClient, ticket: Ticket): Promise<ModalView> {
+  const openerName = await getFriendlyName(client, ticket.opener_id);
   const stats = ticketStatsForUser(ticket.opener_id);
   const adminUrl = `${config.stardanceAdminUrl}?query=${encodeURIComponent(ticket.opener_id)}`;
 
@@ -37,7 +40,7 @@ function infoModalView(ticket: Ticket, openerName: string): ModalView {
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Open in Stardance admin", emoji: true },
+          text: { type: "plain_text", text: "open in stardance admin" },
           url: adminUrl,
           action_id: "open_stardance_admin",
         },
@@ -46,7 +49,22 @@ function infoModalView(ticket: Ticket, openerName: string): ModalView {
   ];
 
   if (ticket.status === "open") {
+    const assignedLine = ticket.assigned_to
+      ? `Assigned to <@${ticket.assigned_to}>.`
+      : "Unclaimed.";
+
     blocks.push(
+      { type: "divider" },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: assignedLine },
+        accessory: {
+          type: "button",
+          text: { type: "plain_text", text: "claim ticket" },
+          action_id: "claim_ticket",
+          value: String(ticket.id),
+        },
+      },
       { type: "divider" },
       {
         type: "section",
@@ -57,25 +75,16 @@ function infoModalView(ticket: Ticket, openerName: string): ModalView {
         elements: [
           ...CANNED_CLOSE_REASONS.map((reason) => ({
             type: "button" as const,
-            text: { type: "plain_text" as const, text: reason.label, emoji: true },
+            text: { type: "plain_text" as const, text: reason.label },
             action_id: `close_with_reason:${reason.key}`,
             value: String(ticket.id),
           })),
           {
             type: "button" as const,
-            text: { type: "plain_text" as const, text: "🧹 Wipe thread", emoji: true },
+            text: { type: "plain_text" as const, text: "wipe thread" },
             style: "danger" as const,
             action_id: "wipe_thread",
             value: String(ticket.id),
-            confirm: {
-              title: { type: "plain_text" as const, text: "Wipe this thread?" },
-              text: {
-                type: "mrkdwn" as const,
-                text: "Deletes Hestia's messages and reactions in this thread and removes the ticket record. This can't be undone.",
-              },
-              confirm: { type: "plain_text" as const, text: "Wipe it" },
-              deny: { type: "plain_text" as const, text: "Never mind" },
-            },
           },
         ],
       }
@@ -85,16 +94,16 @@ function infoModalView(ticket: Ticket, openerName: string): ModalView {
   return {
     type: "modal",
     title: { type: "plain_text", text: "User info" },
-    close: { type: "plain_text", text: "Close" },
+    close: { type: "plain_text", text: "close" },
     blocks,
   };
 }
 
-function doneView(title: string, text: string): ModalView {
+function terminalView(title: string, text: string): ModalView {
   return {
     type: "modal",
     title: { type: "plain_text", text: title },
-    close: { type: "plain_text", text: "Done" },
+    close: { type: "plain_text", text: "close" },
     blocks: [{ type: "section", text: { type: "mrkdwn", text } }],
   };
 }
@@ -121,16 +130,33 @@ export function registerUserInfoModal(): void {
       return;
     }
 
-    const openerName = await getFriendlyName(client, ticket.opener_id);
     await client.views.open({
       trigger_id: body.trigger_id,
-      view: infoModalView(ticket, openerName),
+      view: await infoModalView(client, ticket),
     });
   });
 
   // Buttons with a `url` still fire an interaction payload -- just ack it, Slack opens the link itself.
   app.action("open_stardance_admin", async ({ ack }) => {
     await ack();
+  });
+
+  app.action("claim_ticket", async ({ ack, body, client, action }) => {
+    await ack();
+
+    if (action.type !== "button" || !action.value) return;
+    if (body.type !== "block_actions" || !body.view) return;
+    if (!(await isHelper(body.user.id))) return;
+
+    const ticket = getTicketById(Number(action.value));
+    if (!ticket || ticket.status !== "open") return;
+
+    const updated = claimTicket(ticket.id, body.user.id);
+
+    await client.views.update({
+      view_id: body.view.id,
+      view: await infoModalView(client, updated),
+    });
   });
 
   app.action(/^close_with_reason:/, async ({ ack, body, client, action }) => {
@@ -150,7 +176,7 @@ export function registerUserInfoModal(): void {
     if (ticket.status === "resolved") {
       await client.views.update({
         view_id: body.view.id,
-        view: doneView("Already resolved", "This ticket's already resolved :white_check_mark:"),
+        view: terminalView("Already resolved", "This ticket's already resolved :white_check_mark:"),
       });
       return;
     }
@@ -171,7 +197,7 @@ export function registerUserInfoModal(): void {
       channel: updated.channel_id,
       thread_ts: updated.message_ts,
       text: reason.message,
-      blocks: buildResolvedAnnouncementBlocks(updated),
+      blocks: buildResolvedAnnouncementBlocks(updated, { withReopenButton: false }),
     });
     setResolutionTs(updated.id, announcement.ts as string);
 
@@ -184,9 +210,10 @@ export function registerUserInfoModal(): void {
       name: "white_check_mark",
     });
 
+    // Refresh in place, the quick-close section drops out on its own since the ticket's no longer open.
     await client.views.update({
       view_id: body.view.id,
-      view: doneView("Closed", `Closed with the *${reason.label}* reason. 🎉`),
+      view: await infoModalView(client, updated),
     });
   });
 
@@ -218,7 +245,7 @@ export function registerUserInfoModal(): void {
 
     await client.views.update({
       view_id: body.view.id,
-      view: doneView("Wiped", "🧹 Thread wiped, no trace of Hestia left behind."),
+      view: terminalView("Wiped", "Thread wiped, no trace of Hestia left behind."),
     });
   });
 }

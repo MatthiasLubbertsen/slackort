@@ -11,12 +11,12 @@ export interface CannedCloseReason {
 export const CANNED_CLOSE_REASONS: CannedCloseReason[] = [
   {
     key: "fraud",
-    label: "Fraud",
-    message: "Hi, please keep your fraud related questions with @fraud squad. It's better for us all!",
+    label: "fraud",
+    message: "Hi, please keep your fraud related questions with <@U091HC53CE8>. It's better for us all!",
   },
   {
     key: "hackatime",
-    label: "Hackatime",
+    label: "hackatime",
     message: "Hi, would you mind redirecting your Hackatime questions to letterbird.co/hackatime?",
   },
 ];

@@ -5,16 +5,17 @@ A support ticket bot for Slack. Everything about running a ticket lives inside S
 ## Features
 
 - **Just post in the support channel**, any top-level message there automatically opens a ticket, no slash command needed
-- The message gets a :thinking_face: reaction while open, and Hestia replies **in a thread** with a friendly greeting (using the opener's display name, never a ping), a nudge to check the FAQ, and an **I get it now** button to resolve it
+- The message gets a :thinking_face: reaction while open, and Hestia replies **in a thread** with a friendly greeting (using the opener's display name, never a ping), a nudge to check the FAQ, and an **i get it now** button to resolve it
 - Either the **ticket opener** or anyone in your **support user group** can resolve or reopen a ticket
-- On resolve: the button disappears, :thinking_face: flips to :white_check_mark: on the original message, and a **new** thread message announces who resolved it, with a **Reopen** button
+- On resolve: the button disappears, :thinking_face: flips to :white_check_mark: on the original message, and a **new** thread message announces who resolved it, with a **reopen** button
 - On reopen: a brand new "reopened by" message is posted (the old resolved announcement is left alone as history, just loses its button), and the resolve button comes back
-- A tiny, staff-only overflow menu on the greeting ("🔎 Support Scouts only") opens a modal with the opener's ticket stats, a one-click link into the Stardance admin panel, canned quick-close replies, and a "wipe thread" button
+- A tiny, staff-only overflow menu on the greeting ("🔎 Support Scouts only") opens a modal for helpers with the opener's ticket stats, a one-click link into the Stardance admin panel, a **claim ticket** button, canned quick-close replies, and a **wipe thread** button
 - Non-Scouts (including the ticket opener) get bounced with an ephemeral message right in the thread if they try to click that menu
 - Post again *shortly* after opening a ticket (an accidental double-post) and Hestia redirects you back to that thread with a ping, instead of opening a duplicate. Wait long enough and a second message is treated as a genuinely new ticket, you can have more than one open at a time
-- **App Home** tab shows the current open-ticket count, a link to the FAQ canvas, and a helper leaderboard (this week + all time)
+- **App Home** tab with two views (switch with the buttons up top): an overview (a ticket-status pie chart, total/24h stat boxes with hang time, and a two-column all-time/24h leaderboard) and "my tickets" (whatever's currently claimed and assigned to you)
 - A **daily summary** is posted automatically (opened / resolved / still-open counts, average resolution time, oldest open tickets)
 - A **read-only stats API** and a **placeholder web page**, both plain HTTP, no API keys
+- Every button is lowercase with no emoji, on purpose
 
 ## Stack
 
@@ -47,9 +48,10 @@ src/
       cannedCloseReasons.ts        the quick-close reason list, add more here
       createTicketFromMessage.ts   message listener that opens a ticket
       resolveTicket.ts             resolve + reopen button handlers
-      userInfoModal.ts             staff-only overflow menu, user info, quick close, wipe thread
+      userInfoModal.ts             staff-only overflow menu, user info, claim, quick close, wipe thread
     home/
-      publishHome.ts         App Home view + leaderboard rendering
+      publishHome.ts         App Home view, tab switching, stats boxes, leaderboards
+      statusChart.ts         builds the quickchart.io pie chart URL
     summary/
       dailySummary.ts        cron job + summary message
 ```
@@ -90,16 +92,32 @@ The sqlite file lives at `./data/hestia.db` on the host (bind-mounted into the c
 - **Reopening:** clicking **Reopen** (opener or helper again) leaves the resolved announcement's text untouched and just strips its button, restores the resolve button on the original reply, posts a brand new "reopened by" message, and flips the reaction back to :thinking_face:.
 - **Accidental double-posts:** if someone who already has an open ticket posts *another* top-level message within `DUPLICATE_WINDOW_MINUTES` (default 5) of opening it, Hestia doesn't create a second ticket, it posts an ephemeral reply (visible only to them, right in that new message's thread, and it does ping them since only they can see it) pointing back at the real thread, and marks the stray message :white_check_mark:. Past that window a new top-level message opens a genuinely separate ticket, people can have more than one open ticket at once.
 - **Staff-only user info:** the small overflow menu (⋮, labeled "🔎 Support Scouts only") on the greeting message checks `isHelper` before doing anything; anyone else (opener included) gets an ephemeral "staff only" reply posted right in the ticket's thread. Helpers get a modal with the opener's ticket stats (opened / resolved / currently open) and a link into `STARDANCE_ADMIN_URL` pre-filled with their Slack user ID.
-- **Quick close:** the same modal lists buttons from `cannedCloseReasons.ts`, each one resolves the ticket and posts its exact message as the resolution announcement instead of the usual "resolved by X" line, so it never names which Scout clicked it (they're still credited internally for the leaderboard). Add a new `{ key, label, message }` entry to that file to add another one, nothing else needs touching.
-- **Wipe thread:** also in that modal, a red "🧹 Wipe thread" button (with a confirmation dialog first) deletes Hestia's own messages (the greeting reply and, if it exists, the resolution announcement) and reactions from the thread, then deletes the ticket row entirely. It never touches the opener's original message.
-- **Leaderboard / App Home:** on `app_home_opened`, queries `tickets` grouped by `resolved_by` for this week and all time.
+- **Claiming:** while a ticket is open, the same modal shows whether it's unclaimed or who it's assigned to, with a "claim ticket" button. Claiming doesn't touch the public thread, it just sets `assigned_to`, which is what makes a ticket count as "in progress" instead of plain "open" everywhere else (stats, the pie chart, the API), and is what populates a helper's "my tickets" Home tab.
+- **Quick close:** the same modal lists buttons from `cannedCloseReasons.ts`, each one resolves the ticket (no reopen button this time) and posts its exact message as the resolution announcement instead of the usual "resolved by X" line, so it never names which Scout clicked it (they're still credited internally for the leaderboard) and there's no celebratory wording either. The `fraud` reason pings a fixed Slack user ID (a bot) on purpose. Add a new `{ key, label, message }` entry to that file to add another reason, nothing else needs touching.
+- **Wipe thread:** also in that modal, a "wipe thread" button deletes Hestia's own messages (the greeting reply and, if it exists, the resolution announcement) and reactions from the thread, then deletes the ticket row entirely, no confirmation dialog, no extra message anywhere. It never touches the opener's original message.
+- **Ticket categories:** under the hood there's still just `open`/`resolved` in the database, but everywhere stats are shown a ticket is categorized as `closed` (resolved), `in_progress` (open + claimed), or `open` (open + unclaimed) -- matching how Stardance already thinks about tickets.
 - **Daily summary:** a `node-cron` job (default `0 9 * * *`, timezone from `TIMEZONE`) posts opened/resolved/still-open counts, average resolution time, and the oldest still-open tickets to `SUMMARY_CHANNEL_ID`.
+
+## App Home
+
+Two views, switched with the buttons at the top (`home_tab_overview` / `home_tab_mine`), both re-publish the same Home tab for just that user:
+
+- **Overview:** the FAQ link, a pie chart of Open/In Progress/Closed (rendered by quickchart.io from a URL built in `statusChart.ts`, no image processing happens on our end, it's a hosted chart-image service given a chart.js config, only aggregate counts ever go into that URL), two stat boxes (Total Tickets and Past 24 Hours, each with Total/Open/In Progress/Closed and average "hang time" in minutes, the 24h box also gets a Closed Today count), then a two-column, medal-free, numbered all-time vs. past-24-hours leaderboard.
+- **My tickets:** a helper's currently claimed, still-open tickets. Not a helper, or nothing claimed yet? Just a friendly "nothing to worry about" message.
 
 ## Stats API and placeholder page
 
 Two small express servers start automatically, no auth on either, on purpose (the API is GET-only, there's nothing to protect):
 
-- **Stats API**, `API_PORT` (default `7778`): `GET /health` for an uptime check, plus `GET /api/overview`, `GET /api/tickets?status=open|resolved&limit=&offset=`, `GET /api/tickets/:id` (includes a live Slack permalink), `GET /api/users/:userId/stats`, and `GET /api/leaderboard?range=week|all`.
+- **Stats API**, `API_PORT` (default `7778`):
+  - `GET /health`, no auth, for an uptime check
+  - `GET /api/overview`, category counts + hang time for all-time and the past 24h, plus leaderboards (24h/weekly/all-time)
+  - `GET /api/tickets?status=open|resolved&limit=&offset=&names=true`, paginated ticket list; add `names=true` to also resolve Slack display names (costs an API call per name, cached 10 minutes)
+  - `GET /api/tickets/:id`, one ticket with names and a live Slack permalink always included
+  - `GET /api/users/:userId/stats`, opened/resolved/open counts for one Slack user ID
+  - `GET /api/leaderboard?range=week|all`, just the leaderboard rows
+
+  Every ticket object includes `category` (`open`/`in_progress`/`closed`) and `assignedTo` alongside the raw `status`.
 - **Placeholder page**, `WEB_PORT` (default `7777`): just returns `hi`, swap in something real later.
 
 Set either port to `0` in `.env` to turn that server off.
