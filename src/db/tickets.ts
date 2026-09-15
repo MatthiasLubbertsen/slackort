@@ -7,6 +7,7 @@ export interface Ticket {
   channel_id: string;
   message_ts: string;
   reply_ts: string | null;
+  resolution_ts: string | null;
   opener_id: string;
   subject: string;
   status: TicketStatus;
@@ -35,6 +36,10 @@ export function setReplyTs(ticketId: number, replyTs: string): void {
   db.prepare(`UPDATE tickets SET reply_ts = ? WHERE id = ?`).run(replyTs, ticketId);
 }
 
+export function setResolutionTs(ticketId: number, resolutionTs: string | null): void {
+  db.prepare(`UPDATE tickets SET resolution_ts = ? WHERE id = ?`).run(resolutionTs, ticketId);
+}
+
 export function getTicketById(ticketId: number): Ticket | undefined {
   return db.prepare(`SELECT * FROM tickets WHERE id = ?`).get(ticketId) as Ticket | undefined;
 }
@@ -43,6 +48,13 @@ export function resolveTicket(ticketId: number, resolvedBy: string): Ticket {
   db.prepare(
     `UPDATE tickets SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE id = ?`
   ).run(Date.now(), resolvedBy, ticketId);
+  return getTicketById(ticketId)!;
+}
+
+export function reopenTicket(ticketId: number): Ticket {
+  db.prepare(
+    `UPDATE tickets SET status = 'open', resolved_at = NULL, resolved_by = NULL WHERE id = ?`
+  ).run(ticketId);
   return getTicketById(ticketId)!;
 }
 

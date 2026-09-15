@@ -1,7 +1,8 @@
 import { app } from "../../slack/app";
 import { config } from "../../config";
 import { createTicket, setReplyTs } from "../../db/tickets";
-import { buildTicketReplyBlocks } from "./blocks";
+import { buildTicketIntroBlocks } from "./blocks";
+import { getFriendlyName } from "../../slack/userName";
 
 const SUBJECT_MAX_LENGTH = 120;
 
@@ -42,11 +43,13 @@ export function registerCreateTicketFromMessage(): void {
       subject,
     });
 
+    const openerName = await getFriendlyName(client, openerId);
+
     const reply = await client.chat.postMessage({
       channel: message.channel,
       thread_ts: message.ts,
-      text: `Ticket opened by <@${openerId}>: ${subject}`,
-      blocks: buildTicketReplyBlocks(ticket),
+      text: `Hi ${openerName}, a helper will be with you shortly.`,
+      blocks: buildTicketIntroBlocks(ticket, openerName),
     });
 
     setReplyTs(ticket.id, reply.ts as string);

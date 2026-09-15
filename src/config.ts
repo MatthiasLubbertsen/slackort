@@ -22,5 +22,5 @@ export const config = {
   dailySummaryCron: process.env.DAILY_SUMMARY_CRON || "0 9 * * *",
   timezone: process.env.TIMEZONE || "UTC",
 
-  dbPath: process.env.DB_PATH || "./data/slackort.db",
+  dbPath: process.env.DB_PATH || "./data/hestia.db",
 };

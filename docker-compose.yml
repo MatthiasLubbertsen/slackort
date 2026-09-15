@@ -1,5 +1,5 @@
 services:
-  slackort:
+  hestia:
     build: .
     env_file:
       - .env

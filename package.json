@@ -1,7 +1,7 @@
 {
-  "name": "slackort",
+  "name": "hestia",
   "version": "1.0.0",
-  "description": "A Slack-native support ticket bot -- FAQ canvas, ticket resolution, daily summaries, and a helper leaderboard, no web dashboard required.",
+  "description": "Hestia, a Slack-native support ticket bot -- FAQ canvas, ticket resolution, daily summaries, and a helper leaderboard, no web dashboard required.",
   "main": "dist/index.js",
   "type": "commonjs",
   "scripts": {

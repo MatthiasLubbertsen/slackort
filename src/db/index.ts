@@ -26,3 +26,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_resolved_by ON tickets(resolved_by);
   CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
 `);
+
+function ensureColumn(table: string, column: string, columnDdl: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDdl}`);
+  }
+}
+
+// Added after the initial release -- keeps older sqlite files working without a fresh install.
+ensureColumn("tickets", "resolution_ts", "resolution_ts TEXT");

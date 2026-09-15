@@ -17,6 +17,6 @@ RUN npm run build
 RUN mkdir -p /app/data
 
 ENV NODE_ENV=production
-ENV DB_PATH=/app/data/slackort.db
+ENV DB_PATH=/app/data/hestia.db
 
 CMD ["node", "dist/index.js"]

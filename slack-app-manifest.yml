@@ -1,10 +1,10 @@
 display_information:
-  name: Slackort
+  name: Hestia
   description: Slack-native support ticketing -- FAQ canvas, one-click resolve, daily summaries, helper leaderboard.
   background_color: "#2c2d30"
 features:
   bot_user:
-    display_name: slackort
+    display_name: hestia
     always_online: true
   app_home:
     home_tab_enabled: true
@@ -21,6 +21,7 @@ oauth_config:
       - channels:history
       - groups:read
       - groups:history
+      - users:read
 settings:
   event_subscriptions:
     bot_events:

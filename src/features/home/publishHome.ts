@@ -9,7 +9,7 @@ function renderLeaderboard(rows: LeaderboardRow[]): string {
   if (rows.length === 0) return "_nobody's resolved a ticket yet_";
   const medals = ["🥇", "🥈", "🥉"];
   return rows
-    .map((row, i) => `${medals[i] ?? `${i + 1}.`} <@${row.resolved_by}> — ${row.count} resolved`)
+    .map((row, i) => `${medals[i] ?? `${i + 1}.`} <@${row.resolved_by}>, ${row.count} resolved`)
     .join("\n");
 }
 
@@ -21,7 +21,7 @@ export async function publishHomeView(userId: string): Promise<void> {
   const blocks: KnownBlock[] = [
     {
       type: "header",
-      text: { type: "plain_text", text: "🛟 Slackort", emoji: true },
+      text: { type: "plain_text", text: "🔥 Hestia", emoji: true },
     },
     {
       type: "section",
@@ -37,7 +37,7 @@ export async function publishHomeView(userId: string): Promise<void> {
     { type: "divider" },
     {
       type: "header",
-      text: { type: "plain_text", text: "🏆 Helper leaderboard — this week", emoji: true },
+      text: { type: "plain_text", text: "🏆 Helper leaderboard: this week", emoji: true },
     },
     {
       type: "section",
@@ -46,7 +46,7 @@ export async function publishHomeView(userId: string): Promise<void> {
     { type: "divider" },
     {
       type: "header",
-      text: { type: "plain_text", text: "🏆 Helper leaderboard — all time", emoji: true },
+      text: { type: "plain_text", text: "🏆 Helper leaderboard: all time", emoji: true },
     },
     {
       type: "section",

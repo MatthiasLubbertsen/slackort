@@ -12,5 +12,5 @@ registerDailySummary();
 
 (async () => {
   await app.start();
-  console.log("⚡️ Slackort is running (Socket Mode)");
+  console.log("🔥 Hestia is running (Socket Mode)");
 })();
