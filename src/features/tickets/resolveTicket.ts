@@ -1,10 +1,5 @@
 import { app } from "../../slack/app";
-import {
-  getTicketById,
-  resolveTicket,
-  reopenTicket,
-  setResolutionTs,
-} from "../../db/tickets";
+import { getTicketById, resolveTicket, reopenTicket, setResolutionTs } from "../../db/tickets";
 import { canResolve } from "../../slack/helpers";
 import { getFriendlyName } from "../../slack/userName";
 import {
@@ -51,7 +46,7 @@ export function registerResolveTicket(): void {
       await client.chat.update({
         channel: updated.channel_id,
         ts: updated.reply_ts,
-        text: `Hi ${openerName}, a helper will be with you shortly.`,
+        text: `Hey ${openerName}, a helper will be along shortly.`,
         blocks: buildTicketIntroBlocks(updated, openerName),
       });
     }
@@ -60,7 +55,7 @@ export function registerResolveTicket(): void {
     const announcement = await client.chat.postMessage({
       channel: updated.channel_id,
       thread_ts: updated.message_ts,
-      text: `This post has just been marked as resolved by <@${updated.resolved_by}>!`,
+      text: `This ticket has just been marked as resolved by <@${updated.resolved_by}>!`,
       blocks: buildResolvedAnnouncementBlocks(updated),
     });
     setResolutionTs(updated.id, announcement.ts as string);
@@ -101,6 +96,7 @@ export function registerResolveTicket(): void {
       return;
     }
 
+    // Opener or helper, same as resolving.
     const allowed = await canResolve(body.user.id, ticket.opener_id);
     if (!allowed) {
       await client.chat.postEphemeral({
@@ -112,7 +108,20 @@ export function registerResolveTicket(): void {
     }
 
     const reopenedByUserId = body.user.id;
+
+    // The old resolution announcement just loses its Reopen button -- its
+    // "resolved by X" text stays put as history, nothing else about it changes.
+    if (ticket.resolution_ts) {
+      await client.chat.update({
+        channel: ticket.channel_id,
+        ts: ticket.resolution_ts,
+        text: `This ticket was marked as resolved by <@${ticket.resolved_by}>.`,
+        blocks: buildResolvedAnnouncementBlocks(ticket, { withReopenButton: false }),
+      });
+    }
+
     const updated = reopenTicket(ticket.id);
+    setResolutionTs(updated.id, null);
 
     // Restore the Resolve button on the original threaded reply.
     if (updated.reply_ts) {
@@ -120,21 +129,18 @@ export function registerResolveTicket(): void {
       await client.chat.update({
         channel: updated.channel_id,
         ts: updated.reply_ts,
-        text: `Hi ${openerName}, a helper will be with you shortly.`,
+        text: `Hey ${openerName}, a helper will be along shortly.`,
         blocks: buildTicketIntroBlocks(updated, openerName),
       });
     }
 
-    // The old resolution announcement loses its Reopen button.
-    if (updated.resolution_ts) {
-      await client.chat.update({
-        channel: updated.channel_id,
-        ts: updated.resolution_ts,
-        text: `This ticket was reopened by <@${reopenedByUserId}>.`,
-        blocks: buildReopenedAnnouncementBlocks(reopenedByUserId),
-      });
-      setResolutionTs(updated.id, null);
-    }
+    // A brand new message announces the reopen, separate from the old one.
+    await client.chat.postMessage({
+      channel: updated.channel_id,
+      thread_ts: updated.message_ts,
+      text: `This ticket has been reopened by <@${reopenedByUserId}>!`,
+      blocks: buildReopenedAnnouncementBlocks(reopenedByUserId),
+    });
 
     await client.reactions
       .remove({

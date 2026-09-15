@@ -58,6 +58,35 @@ export function reopenTicket(ticketId: number): Ticket {
   return getTicketById(ticketId)!;
 }
 
+export function getOpenTicketForUser(channelId: string, openerId: string): Ticket | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM tickets WHERE channel_id = ? AND opener_id = ? AND status = 'open'
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(channelId, openerId) as Ticket | undefined;
+}
+
+export interface UserTicketStats {
+  total: number;
+  open: number;
+  resolved: number;
+}
+
+export function ticketStatsForUser(openerId: string): UserTicketStats {
+  const total = (
+    db.prepare(`SELECT COUNT(*) as c FROM tickets WHERE opener_id = ?`).get(openerId) as {
+      c: number;
+    }
+  ).c;
+  const open = (
+    db
+      .prepare(`SELECT COUNT(*) as c FROM tickets WHERE opener_id = ? AND status = 'open'`)
+      .get(openerId) as { c: number }
+  ).c;
+  return { total, open, resolved: total - open };
+}
+
 export function countOpenTickets(): number {
   const row = db.prepare(`SELECT COUNT(*) as c FROM tickets WHERE status = 'open'`).get() as {
     c: number;

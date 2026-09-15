@@ -1,7 +1,7 @@
 import { app } from "../../slack/app";
 import { config } from "../../config";
-import { createTicket, setReplyTs } from "../../db/tickets";
-import { buildTicketIntroBlocks } from "./blocks";
+import { createTicket, getOpenTicketForUser, setReplyTs } from "../../db/tickets";
+import { buildTicketIntroBlocks, buildStrayMessageNudgeBlocks } from "./blocks";
 import { getFriendlyName } from "../../slack/userName";
 
 const SUBJECT_MAX_LENGTH = 120;
@@ -28,6 +28,32 @@ export function registerCreateTicketFromMessage(): void {
     if (!("user" in message) || !message.user) return;
 
     const openerId = message.user;
+    const openerName = await getFriendlyName(client, openerId);
+
+    // Someone posting again outside their existing ticket's thread -- point them
+    // back at it instead of spinning up a second, disconnected ticket.
+    const existingTicket = getOpenTicketForUser(message.channel, openerId);
+    if (existingTicket) {
+      const permalink = await client.chat
+        .getPermalink({ channel: existingTicket.channel_id, message_ts: existingTicket.message_ts })
+        .then((r) => r.permalink)
+        .catch(() => undefined);
+
+      await client.chat.postMessage({
+        channel: message.channel,
+        thread_ts: message.ts,
+        text: `Hey ${openerName}, you've already got a ticket open, please continue in that thread!`,
+        blocks: buildStrayMessageNudgeBlocks(openerName, permalink),
+      });
+
+      await client.reactions.add({
+        channel: message.channel,
+        timestamp: message.ts,
+        name: "white_check_mark",
+      });
+      return;
+    }
+
     const subject = subjectFromText("text" in message ? message.text : undefined);
 
     await client.reactions.add({
@@ -43,12 +69,10 @@ export function registerCreateTicketFromMessage(): void {
       subject,
     });
 
-    const openerName = await getFriendlyName(client, openerId);
-
     const reply = await client.chat.postMessage({
       channel: message.channel,
       thread_ts: message.ts,
-      text: `Hi ${openerName}, a helper will be with you shortly.`,
+      text: `Hey ${openerName}, a helper will be along shortly.`,
       blocks: buildTicketIntroBlocks(ticket, openerName),
     });
 

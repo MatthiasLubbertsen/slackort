@@ -19,6 +19,9 @@ export const config = {
   supportUsergroupId: required("SUPPORT_USERGROUP_ID"),
   faqCanvasUrl: required("FAQ_CANVAS_URL"),
 
+  stardanceAdminUrl:
+    process.env.STARDANCE_ADMIN_URL || "https://stardance.hackclub.com/admin/users",
+
   dailySummaryCron: process.env.DAILY_SUMMARY_CRON || "0 9 * * *",
   timezone: process.env.TIMEZONE || "UTC",
 

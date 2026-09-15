@@ -5,9 +5,12 @@ A support ticket bot for Slack. Everything lives inside Slack: no web dashboard,
 ## Features
 
 - **Just post in the support channel**, any top-level message there automatically opens a ticket, no slash command needed
-- The message gets a :thinking_face: reaction while open, and Hestia replies **in a thread** with a friendly greeting (using the opener's real name, never a ping), a nudge to check the FAQ, and a **Resolve** button
-- Either the **ticket opener** or anyone in your **support user group** can resolve a ticket
+- The message gets a :thinking_face: reaction while open, and Hestia replies **in a thread** with a friendly greeting (using the opener's display name, never a ping), a nudge to check the FAQ, and a **Resolve** button
+- Either the **ticket opener** or anyone in your **support user group** can resolve or reopen a ticket
 - On resolve: the Resolve button disappears, :thinking_face: flips to :white_check_mark: on the original message, and a **new** thread message announces who resolved it, with a **Reopen** button
+- On reopen: a brand new "reopened by" message is posted (the old resolved announcement is left alone as history, just loses its button), and the Resolve button comes back
+- A tiny, staff-only overflow menu on the greeting opens a modal with the opener's ticket stats and a one-click link into the Stardance admin panel
+- Post again outside your ticket's thread while it's still open (like a second "hi" as its own message) and Hestia points you back to the thread instead of opening a duplicate
 - **App Home** tab shows the current open-ticket count, a link to the FAQ canvas, and a helper leaderboard (this week + all time)
 - A **daily summary** is posted automatically (opened / resolved / still-open counts, average resolution time, oldest open tickets)
 
@@ -33,9 +36,10 @@ src/
     userName.ts              friendly display name lookup, never a mention
   features/
     tickets/
-      blocks.ts                    Block Kit builders (intro, resolved, reopened)
+      blocks.ts                    Block Kit builders (intro, resolved, reopened, stray nudge)
       createTicketFromMessage.ts   message listener that opens a ticket
       resolveTicket.ts             resolve + reopen button handlers
+      userInfoModal.ts             staff-only overflow menu + user info modal
     home/
       publishHome.ts         App Home view + leaderboard rendering
     summary/
@@ -73,9 +77,11 @@ The sqlite file lives at `./data/hestia.db` on the host (bind-mounted into the c
 
 ## How it works
 
-- **Opening a ticket:** any plain top-level message posted in `SUPPORT_CHANNEL_ID` (not a thread reply, not from a bot, not an edit/join/etc.) reacts with :thinking_face: and gets a ticket row keyed on its `channel_id` + `message_ts`. Hestia looks up the opener's real name (falling back to their display name, never an `@mention`) and replies in a thread with a greeting, the FAQ link inlined in a sentence so it unfurls, and a Resolve button. That reply's `ts` is stored as `reply_ts` so it can be rewritten later.
-- **Resolving:** clicking **Resolve** checks that the clicker is either the opener or a member of `SUPPORT_USERGROUP_ID` (looked up live via `usergroups.users.list`, cached 5 minutes). If allowed, the ticket is marked resolved, the original threaded reply is rewritten with the Resolve button removed, a brand new message announces who resolved it with a Reopen button, and the reaction on the original message flips from :thinking_face: to :white_check_mark:.
-- **Reopening:** clicking **Reopen** on that announcement puts the ticket back to open, restores the Resolve button on the original reply, turns the announcement into a plain "reopened by" note, and flips the reaction back to :thinking_face:.
+- **Opening a ticket:** any plain top-level message posted in `SUPPORT_CHANNEL_ID` (not a thread reply, not from a bot, not an edit/join/etc.) reacts with :thinking_face: and gets a ticket row keyed on its `channel_id` + `message_ts`. Hestia looks up the opener's display name (always that, falling back through real name and username, never an `@mention`) and replies in a thread with a greeting, the FAQ link inlined in a sentence so it unfurls, and a Resolve button. That reply's `ts` is stored as `reply_ts` so it can be rewritten later.
+- **Resolving:** clicking **Resolve** checks that the clicker is either the opener or a member of `SUPPORT_USERGROUP_ID` (looked up live via `usergroups.users.list`, cached 5 minutes). If allowed, the ticket is marked resolved, the original threaded reply is rewritten with the Resolve button removed, a brand new message announces who resolved it with a Reopen button (`resolution_ts` tracks that message), and the reaction on the original message flips from :thinking_face: to :white_check_mark:.
+- **Reopening:** clicking **Reopen** (opener or helper again) leaves the resolved announcement's text untouched and just strips its button, restores the Resolve button on the original reply, posts a brand new "reopened by" message, and flips the reaction back to :thinking_face:.
+- **Staying threaded:** if someone who already has an open ticket posts *another* top-level message instead of replying in their ticket's thread, Hestia skips creating a second ticket, replies pointing them at the existing thread (with a permalink when it can get one), and marks that stray message :white_check_mark: so it doesn't sit there looking unhandled.
+- **Staff-only user info:** the small overflow menu (⋮) on the greeting message opens a modal for helpers only, showing the opener's ticket stats (opened / resolved / currently open) and a link into `STARDANCE_ADMIN_URL` pre-filled with their Slack user ID.
 - **Leaderboard / App Home:** on `app_home_opened`, queries `tickets` grouped by `resolved_by` for this week and all time.
 - **Daily summary:** a `node-cron` job (default `0 9 * * *`, timezone from `TIMEZONE`) posts opened/resolved/still-open counts, average resolution time, and the oldest still-open tickets to `SUMMARY_CHANNEL_ID`.
 
