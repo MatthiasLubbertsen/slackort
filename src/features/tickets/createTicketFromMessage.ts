@@ -1,8 +1,15 @@
 import { app } from "../../slack/app";
 import { config } from "../../config";
-import { createTicket, getOpenTicketForUser, setReplyTs } from "../../db/tickets";
+import {
+  claimTicket,
+  createTicket,
+  getOpenTicketForUser,
+  getTicketByMessageTs,
+  setReplyTs,
+} from "../../db/tickets";
 import { buildTicketIntroBlocks } from "./blocks";
 import { getFriendlyName } from "../../slack/userName";
+import { isHelper } from "../../slack/helpers";
 
 const SUBJECT_MAX_LENGTH = 120;
 
@@ -20,14 +27,25 @@ export function registerCreateTicketFromMessage(): void {
     if (message.channel !== config.supportChannelId) return;
     if (message.channel_type !== "channel" && message.channel_type !== "group") return;
 
-    // Only plain top-level messages open a ticket -- skip edits/deletes/joins/bot
-    // posts and thread replies (those are just ticket conversation).
+    // Skip edits/deletes/joins/bot posts.
     if ("subtype" in message && message.subtype && message.subtype !== "file_share") return;
     if ("bot_id" in message && message.bot_id) return;
-    if ("thread_ts" in message && message.thread_ts && message.thread_ts !== message.ts) return;
     if (!("user" in message) || !message.user) return;
 
-    const openerId = message.user;
+    const senderId = message.user;
+    const threadTs = "thread_ts" in message ? message.thread_ts : undefined;
+
+    if (threadTs && threadTs !== message.ts) {
+      // A reply in some ticket's thread -- if nobody's claimed it yet and this
+      // is a helper jumping in, that's the claim. Doesn't open a new ticket.
+      const ticket = getTicketByMessageTs(message.channel, threadTs);
+      if (ticket && ticket.status === "open" && !ticket.assigned_to && (await isHelper(senderId))) {
+        claimTicket(ticket.id, senderId);
+      }
+      return;
+    }
+
+    const openerId = senderId;
 
     // Someone posting again shortly after opening a ticket is almost always an
     // accidental double-post (they hit enter twice, or split their message across

@@ -25,6 +25,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
   CREATE INDEX IF NOT EXISTS idx_tickets_resolved_by ON tickets(resolved_by);
   CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
+
+  CREATE TABLE IF NOT EXISTS home_tab_prefs (
+    user_id TEXT PRIMARY KEY,
+    tab TEXT NOT NULL
+  );
 `);
 
 function ensureColumn(table: string, column: string, columnDdl: string): void {

@@ -10,6 +10,11 @@ features:
     home_tab_enabled: true
     messages_tab_enabled: false
     messages_tab_read_only_enabled: false
+  shortcuts:
+    - name: assign to me
+      type: message
+      callback_id: assign_ticket_to_me
+      description: claim this ticket for yourself
 oauth_config:
   scopes:
     bot:

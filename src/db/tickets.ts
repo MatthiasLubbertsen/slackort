@@ -59,6 +59,12 @@ export function getTicketById(ticketId: number): Ticket | undefined {
   return db.prepare(`SELECT * FROM tickets WHERE id = ?`).get(ticketId) as Ticket | undefined;
 }
 
+export function getTicketByMessageTs(channelId: string, messageTs: string): Ticket | undefined {
+  return db
+    .prepare(`SELECT * FROM tickets WHERE channel_id = ? AND message_ts = ?`)
+    .get(channelId, messageTs) as Ticket | undefined;
+}
+
 /**
  * Marks a ticket resolved. `note`, when given, replaces the default "resolved
  * by X" announcement text (used for canned close reasons, which never name

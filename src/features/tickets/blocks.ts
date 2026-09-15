@@ -11,7 +11,7 @@ function staffOverflowAccessory(ticket: Ticket) {
     action_id: USER_INFO_ACTION_ID,
     options: [
       {
-        text: { type: "plain_text" as const, text: "🔎 Support Scouts only" },
+        text: { type: "plain_text" as const, text: "Support Scouts only" },
         value: String(ticket.id),
       },
     ],
