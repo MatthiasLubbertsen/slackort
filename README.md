@@ -60,6 +60,16 @@ npm run dev     # runs with tsx + auto-reload
 npm run build && npm start
 ```
 
+### Running with Docker
+
+```bash
+cp .env.example .env   # fill it in first
+docker compose up -d --build
+docker compose logs -f
+```
+
+The sqlite file lives at `./data/slackort.db` on the host (bind-mounted into the container), so ticket history survives rebuilds and restarts. To stop it: `docker compose down`.
+
 ## How it works
 
 - **Opening a ticket:** any plain top-level message posted in `SUPPORT_CHANNEL_ID` (not a thread reply, not from a bot, not an edit/join/etc.) reacts with :thinking_face: and gets a ticket row keyed on its `channel_id` + `message_ts`. The bot then replies in a thread on that message with the Resolve/FAQ controls -- that reply's `ts` is stored as `reply_ts` so it can be updated later. Keep discussing the issue right there in the thread.
