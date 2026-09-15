@@ -47,7 +47,7 @@ src/
 2. Under **Basic Information**, generate an **app-level token** with the `connections:write` scope — this is your `SLACK_APP_TOKEN` (starts `xapp-`).
 3. Under **OAuth & Permissions**, install the app to your workspace and grab the **Bot User OAuth Token** — this is your `SLACK_BOT_TOKEN` (starts `xoxb-`).
 4. Grab the **Signing Secret** from Basic Information — this is `SLACK_SIGNING_SECRET`.
-5. Invite the bot to your support channel (`/invite @slackort`) and copy that channel's ID for `SUPPORT_CHANNEL_ID`.
+5. Invite the bot to your support channel (`/invite @slackort`) and copy that channel's ID for `SUPPORT_CHANNEL_ID`. **Private channel?** The manifest already includes the `groups:read`/`groups:history` scopes and `message.groups` event needed for that — just make sure the invite happens (the bot can't see or post in a private channel it isn't a member of).
 6. Create (or reuse) a Slack **user group** for your helpers/support team, and copy its ID for `SUPPORT_USERGROUP_ID`.
 7. Create your FAQ **canvas**, copy its link, and set `FAQ_CANVAS_URL`.
 8. Copy `.env.example` to `.env` and fill in the values above.
