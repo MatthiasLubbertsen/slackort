@@ -1,6 +1,7 @@
 import type { KnownBlock, ModalView } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 import {
+  claimTicket,
   getTicketById,
   deleteTicket,
   resolveTicket,
@@ -54,8 +55,8 @@ async function infoModalView(client: WebClient, ticket: Ticket, program: Program
 
   if (ticket.status === "open") {
     const assignedLine = ticket.assigned_to
-      ? `Assigned to <@${ticket.assigned_to}>. Reply in the thread or use the "assign to me" shortcut on a message to take over.`
-      : `Unclaimed, whoever replies in the thread first (or uses the "assign to me" shortcut) gets it.`;
+      ? `Assigned to <@${ticket.assigned_to}>. Reply in the thread, or take over below.`
+      : `Unclaimed, whoever replies in the thread first gets it, or claim it below.`;
 
     const shortcuts = listProgramShortcuts(program.id);
 
@@ -64,6 +65,12 @@ async function infoModalView(client: WebClient, ticket: Ticket, program: Program
       {
         type: "section",
         text: { type: "mrkdwn", text: assignedLine },
+        accessory: {
+          type: "button",
+          text: { type: "plain_text", text: "assign to me" },
+          action_id: "assign_to_me",
+          value: String(ticket.id),
+        },
       },
       { type: "divider" },
       {
@@ -141,6 +148,26 @@ export function registerUserInfoModal(): void {
   // Buttons with a `url` still fire an interaction payload -- just ack it, Slack opens the link itself.
   app.action("open_stardance_admin", async ({ ack }) => {
     await ack();
+  });
+
+  app.action("assign_to_me", async ({ ack, body, client, action }) => {
+    await ack();
+
+    if (action.type !== "button" || !action.value) return;
+    if (body.type !== "block_actions" || !body.view) return;
+
+    const ticket = getTicketById(Number(action.value));
+    if (!ticket || ticket.status !== "open") return;
+    const program = getProgramById(ticket.program_id);
+    if (!program) return;
+    if (!(await isUsergroupMember(body.user.id, program.usergroup_id))) return;
+
+    const updated = claimTicket(ticket.id, body.user.id);
+
+    await client.views.update({
+      view_id: body.view.id,
+      view: await infoModalView(client, updated, program),
+    });
   });
 
   app.action(/^close_with_reason:/, async ({ ack, body, client, action }) => {

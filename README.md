@@ -1,6 +1,6 @@
 # Hestia
 
-A support ticket bot for Slack, one instance serving many `#...-help` channels ("Programs") at once. Everything about running a ticket, and everything about configuring a Program, lives inside Slack, no web dashboard, no separate database UI. It also ships two tiny plain HTTP servers: a read-only JSON stats API and a placeholder page, both unauthenticated by design.
+A support ticket bot for Slack, one instance serving many `#...-help` channels ("Programs") at once. Everything about running a ticket, and everything about configuring a Program, lives inside Slack, no admin web dashboard, no separate database UI. It also ships two tiny plain HTTP servers: a read-only JSON stats API and a public read-only stats page, both unauthenticated by design, since the stats themselves are meant to be public info.
 
 ## Programs, and who can do what
 
@@ -20,11 +20,11 @@ A **Program** is one help channel + one private "BTS" channel (daily summaries) 
 - On reopen: a brand new "reopened by" message is posted (the old resolved announcement is left alone as history, just loses its button), and the resolve button comes back
 - A tiny, staff-only overflow menu on the greeting ("Support Scouts only") opens a modal for that Program's helpers with the opener's ticket stats, a one-click link into the admin panel (if the Program has one set), canned quick-close replies, and a **wipe thread** button
 - Non-Scouts (including the ticket opener) get bounced with an ephemeral message right in the thread if they try to click that menu
-- No claim button, a ticket gets assigned the moment a helper replies in its thread (first one in wins) or uses the **assign to me** message shortcut on any message in that thread
+- No claim button on the ticket itself, a ticket gets assigned the moment a helper replies in its thread (first one in wins), or any helper can force-claim it with an **assign to me** button in the staff modal
 - Post again *shortly* after opening a ticket (an accidental double-post) and Hestia redirects you back to that thread with a ping, instead of opening a duplicate. Wait long enough and a second message is treated as a genuinely new ticket, you can have more than one open at a time
 - **App Home** tab with three views (switch with the buttons up top, and it remembers whichever one you were on last): an overview (a ticket-status pie chart, total/24h stat boxes with hang time, and a two-column all-time/24h leaderboard, all scoped to whichever Program is selected), "my tickets" (whatever's currently assigned to you in that Program), and, super admins only, **admin** (add/edit Programs)
 - A **daily summary** is posted automatically per Program, to its own BTS channel
-- A **read-only stats API** and a **placeholder web page**, both plain HTTP, no API keys
+- A **read-only stats API** and a **public stats page**, both plain HTTP, no API keys, no login
 - Every button is lowercase with no emoji, on purpose
 
 ## Stack
@@ -33,7 +33,7 @@ A **Program** is one help channel + one private "BTS" channel (daily summaries) 
 - [`@slack/bolt`](https://slack.dev/bolt-js/) running in **Socket Mode**, no public URL needed for the bot itself
 - `better-sqlite3` for storage, a single local file, no separate database server
 - `node-cron` for the daily summary schedule
-- `express` for the stats API and the placeholder page
+- `express` for the stats API and the public stats page
 
 ## Project layout
 
@@ -44,7 +44,7 @@ src/
   api/
     server.ts                read-only stats API (express, port 7778 by default)
   web/
-    server.ts                placeholder page (express, port 7777 by default)
+    server.ts                public stats page (express, port 7777 by default), same data as the Home tab overview
   db/
     index.ts                sqlite connection + schema + migrations
     tickets.ts               ticket queries (create, resolve, reopen, leaderboard, stats), all program-scoped
@@ -63,8 +63,7 @@ src/
       blocks.ts                    Block Kit builders (intro, resolved, reopened), take a Program
       createTicketFromMessage.ts   message listener, resolves the Program from the channel, opens tickets, auto-claims on thread replies
       resolveTicket.ts             resolve + reopen button handlers
-      userInfoModal.ts             staff-only overflow menu, user info, quick close, wipe thread
-      assignShortcut.ts            "assign to me" message shortcut
+      userInfoModal.ts             staff-only overflow menu, user info, assign to me, quick close, wipe thread
     home/
       publishHome.ts             App Home view: tab + Program switching, stats boxes, leaderboards
       programAdminModals.ts      add/edit Program, program settings, shortcuts CRUD modals
@@ -113,7 +112,7 @@ If you were already running Hestia before Programs existed, keep your old `SUPPO
 - **Reopening:** clicking **Reopen** (opener or helper again) leaves the resolved announcement's text untouched and just strips its button, restores the resolve button on the original reply, posts a brand new "reopened by" message, and flips the reaction back to :thinking_face:.
 - **Accidental double-posts:** if someone who already has an open ticket posts *another* top-level message within `DUPLICATE_WINDOW_MINUTES` (default 5) of opening it, Hestia doesn't create a second ticket, it posts an ephemeral reply (visible only to them, right in that new message's thread, and it does ping them since only they can see it) pointing back at the real thread, and marks the stray message :white_check_mark:. Past that window a new top-level message opens a genuinely separate ticket, people can have more than one open ticket at once.
 - **Staff-only user info:** the small overflow menu (⋮, labeled "Support Scouts only") on the greeting message checks usergroup membership before doing anything; anyone else (opener included) gets an ephemeral "staff only" reply posted right in the ticket's thread. Helpers get a modal with the opener's ticket stats within that Program and, if the Program has `admin_url_template` set, a link into it pre-filled with the opener's Slack user ID.
-- **Claiming:** there's no button for it. The first helper to reply inside a ticket's thread claims it automatically (only if nobody's claimed it yet), or any helper can use the **assign to me** message shortcut (on any message in that thread, from the "..." menu) to take it regardless of who currently has it, with a randomly-picked one-line ephemeral confirmation. Claiming never touches the public thread, it just sets `assigned_to`, which is what makes a ticket count as "in progress" instead of plain "open" everywhere else (stats, the pie chart, the API), and is what populates a helper's "my tickets" Home tab. The staff modal shows the current assignment as plain text.
+- **Claiming:** no button on the ticket itself. The first helper to reply inside a ticket's thread claims it automatically (only if nobody's claimed it yet), or any helper can hit **assign to me** in the staff modal to take it regardless of who currently has it (no native Slack shortcut involved, on purpose). Claiming never touches the public thread, it just sets `assigned_to`, which is what makes a ticket count as "in progress" instead of plain "open" everywhere else (stats, the pie chart, the API), and is what populates a helper's "my tickets" Home tab. The staff modal shows the current assignment as plain text next to that button.
 - **Quick close:** the same modal lists buttons from that Program's `program_shortcuts` rows, each one resolves the ticket (no reopen button this time) and posts its exact message as the resolution announcement instead of the usual "resolved by X" line, so it never names which Scout clicked it (they're still credited internally for the leaderboard) and there's no celebratory wording either. A Program's admin manages this list (add/edit/delete) from **program settings** -> **manage shortcuts**, no code changes needed.
 - **Wipe thread:** also in that modal, a "wipe thread" button deletes Hestia's own messages (the greeting reply and, if it exists, the resolution announcement) and reactions from the thread, then deletes the ticket row entirely, no confirmation dialog, no extra message anywhere. It never touches the opener's original message.
 - **Ticket categories:** under the hood there's still just `open`/`resolved` in the database, but everywhere stats are shown a ticket is categorized as `closed` (resolved), `in_progress` (open + claimed), or `open` (open + unclaimed) -- matching how Stardance already thinks about tickets.
@@ -131,21 +130,12 @@ A Program picker (only shown when you belong to more than one) sits above the ov
 
 The `Hestia` title uses Block Kit's `header` block, which is already the single largest text style Slack offers, there's no way to make it visually bigger than that from Block Kit alone.
 
-## Stats API and placeholder page
+## Stats API and public stats page
 
-Two small express servers start automatically, no auth on either, on purpose (the API is GET-only, there's nothing to protect):
+Two small express servers start automatically, no auth on either, on purpose: the stats (open/in-progress/closed counts, hang time, helper leaderboards) are meant to be public info, and the API is GET-only, so there's nothing to protect either way. Full endpoint docs with example responses live in [`API.md`](./API.md); the short version:
 
-- **Stats API**, `API_PORT` (default `7778`):
-  - `GET /health`, no auth, for an uptime check
-  - `GET /api/programs`, every Program's id/name/channels
-  - `GET /api/overview?programId=`, category counts + hang time for all-time and the past 24h for that Program, plus its leaderboards (24h/weekly/all-time)
-  - `GET /api/tickets?programId=&status=open|resolved&limit=&offset=&names=true`, paginated ticket list (`programId` optional, omit for every Program); add `names=true` to also resolve Slack display names (costs an API call per name, cached 10 minutes)
-  - `GET /api/tickets/:id`, one ticket with names and a live Slack permalink always included
-  - `GET /api/users/:userId/stats?programId=`, opened/resolved/open counts for one Slack user ID within that Program
-  - `GET /api/leaderboard?programId=&range=week|all`, just the leaderboard rows
-
-  Every ticket object includes `programId`, `category` (`open`/`in_progress`/`closed`), and `assignedTo` alongside the raw `status`.
-- **Placeholder page**, `WEB_PORT` (default `7777`): just returns `hi`, swap in something real later.
+- **Stats API**, `API_PORT` (default `7778`): `/health`, `/api/programs`, `/api/overview`, `/api/tickets`, `/api/tickets/:id`, `/api/users/:userId/stats`, `/api/leaderboard`, all JSON, most take a `programId`.
+- **Public stats page**, `WEB_PORT` (default `7777`), built in `src/web/server.ts`: a plain server-rendered HTML page with the same pie chart / stat boxes / leaderboard as the Home tab's overview, and a `<select>` to switch between Programs (`?program=<id>`, no JavaScript required beyond auto-submitting that dropdown). No ticket subjects or opener identities show up here, only aggregate counts and the resolver leaderboard, same scope as the API.
 
 Set either port to `0` in `.env` to turn that server off.
 
@@ -170,7 +160,7 @@ This repo only exposes the ports, container to host, DNS and a reverse proxy are
 ## Notes
 
 - All state, tickets and Program config alike, lives in the sqlite file at `DB_PATH` (default `./data/hestia.db`). Back that file up if you care about any of it.
-- Socket Mode means the Slack side of the bot needs no inbound HTTP endpoint, only the stats API and placeholder page do.
+- Socket Mode means the Slack side of the bot needs no inbound HTTP endpoint, only the stats API and public stats page do.
 
 ## Verifying a change
 
