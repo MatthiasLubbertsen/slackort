@@ -101,5 +101,6 @@ function ensureColumn(table: string, column: string, columnDdl: string): void {
 ensureColumn("tickets", "resolution_ts", "resolution_ts TEXT");
 ensureColumn("tickets", "resolution_note", "resolution_note TEXT");
 ensureColumn("tickets", "assigned_to", "assigned_to TEXT");
+ensureColumn("tickets", "assigned_at", "assigned_at INTEGER");
 ensureColumn("tickets", "program_id", "program_id INTEGER");
 ensureColumn("home_tab_prefs", "selected_program_id", "selected_program_id INTEGER");

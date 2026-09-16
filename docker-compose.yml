@@ -7,5 +7,5 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     ports:
-      - "7777:7777" # placeholder page, hestia.matthiaz.dev
+      - "7777:7777" # dashboard, hestia.matthiaz.dev
       - "7778:7778" # read-only stats API, api.hestia.matthiaz.dev

@@ -15,6 +15,7 @@ import {
 } from "../db/tickets";
 import { getProgramById, listPrograms } from "../db/programs";
 import { getFriendlyName } from "../slack/userName";
+import { nephthysRouter } from "./nephthysAdapter";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ONE_WEEK_MS = 7 * ONE_DAY_MS;
@@ -79,7 +80,16 @@ async function serializeTicket(
   return { ...base, ...extra };
 }
 
-function overviewPayload(programId: number) {
+async function withNames(rows: { resolved_by: string; count: number }[]) {
+  return Promise.all(
+    rows.map(async (row) => ({
+      ...row,
+      resolvedByName: await getFriendlyName(slackApp.client, row.resolved_by),
+    }))
+  );
+}
+
+async function overviewPayload(programId: number) {
   const allTime = ticketCategoryCounts(programId);
   const last24h = ticketCategoryCounts(programId, Date.now() - ONE_DAY_MS);
 
@@ -94,32 +104,28 @@ function overviewPayload(programId: number) {
       hangTimeMinutes: Math.round(averageHangTimeMinutes(programId, Date.now() - ONE_DAY_MS)),
     },
     leaderboard: {
-      past24h: leaderboard(programId, Date.now() - ONE_DAY_MS),
-      weekly: leaderboard(programId, Date.now() - ONE_WEEK_MS),
-      allTime: leaderboard(programId),
+      past24h: await withNames(leaderboard(programId, Date.now() - ONE_DAY_MS)),
+      weekly: await withNames(leaderboard(programId, Date.now() - ONE_WEEK_MS)),
+      allTime: await withNames(leaderboard(programId)),
     },
   };
 }
 
 /**
- * Starts a read-only, unauthenticated JSON API for ticket stats and details.
- * No write endpoints exist anywhere in this file, on purpose -- that's the
- * whole reason it's safe to leave open with no API key. Set API_PORT to 0
- * to turn it off entirely.
+ * Every read-only route, as a mountable router -- shared between the
+ * standalone stats API (registerApiServer, below) and the dashboard's own
+ * server, which mounts this same router under its own port so the
+ * dashboard can fetch same-origin. No write endpoints exist anywhere in
+ * this file, on purpose.
  */
-export function registerApiServer(): void {
-  if (!config.apiPort) {
-    console.log("Stats API disabled (API_PORT=0)");
-    return;
-  }
+export function apiRouter(): express.Router {
+  const router = express.Router();
 
-  const api = express();
-
-  api.get("/health", (_req, res) => {
+  router.get("/health", (_req, res) => {
     res.json({ ok: true });
   });
 
-  api.get("/api/programs", (_req, res) => {
+  router.get("/api/programs", (_req, res) => {
     res.json({
       programs: listPrograms().map((p) => ({
         id: p.id,
@@ -130,28 +136,28 @@ export function registerApiServer(): void {
     });
   });
 
-  api.get("/api/overview", (req, res) => {
+  router.get("/api/overview", async (req, res) => {
     const programId = requireProgramId(req, res);
     if (!programId) return;
-    res.json(overviewPayload(programId));
+    res.json(await overviewPayload(programId));
   });
 
-  api.get("/api/tickets", async (req, res) => {
+  router.get("/api/tickets", async (req, res) => {
     const { limit, offset } = parsePagination(req.query);
     const statusParam = req.query.status;
     const status =
       statusParam === "open" || statusParam === "resolved"
         ? (statusParam as TicketStatus)
         : undefined;
-    const withNames = req.query.names === "true";
+    const includeNames = req.query.names === "true";
     const programId = req.query.programId ? Number(req.query.programId) : undefined;
 
     const { tickets, total } = listTickets({ programId, status, limit, offset });
-    const serialized = await Promise.all(tickets.map((t) => serializeTicket(t, { names: withNames })));
+    const serialized = await Promise.all(tickets.map((t) => serializeTicket(t, { names: includeNames })));
     res.json({ tickets: serialized, total, limit, offset });
   });
 
-  api.get("/api/tickets/:id", async (req, res) => {
+  router.get("/api/tickets/:id", async (req, res) => {
     const ticket = getTicketById(Number(req.params.id));
     if (!ticket) {
       res.status(404).json({ error: "not found" });
@@ -161,18 +167,39 @@ export function registerApiServer(): void {
     res.json(await serializeTicket(ticket, { names: true, permalink: true }));
   });
 
-  api.get("/api/users/:userId/stats", (req, res) => {
+  router.get("/api/users/:userId/stats", (req, res) => {
     const programId = requireProgramId(req, res);
     if (!programId) return;
     res.json(ticketStatsForUser(req.params.userId, programId));
   });
 
-  api.get("/api/leaderboard", (req, res) => {
+  router.get("/api/leaderboard", async (req, res) => {
     const programId = requireProgramId(req, res);
     if (!programId) return;
     const range = req.query.range === "week" ? Date.now() - ONE_WEEK_MS : undefined;
-    res.json({ leaderboard: leaderboard(programId, range) });
+    res.json({ leaderboard: await withNames(leaderboard(programId, range)) });
   });
+
+  // A Nephthys-shaped read-only view of the same data, per Program, for
+  // anything already built against Nephthys's API. See nephthysAdapter.ts.
+  router.use("/nepththys", nephthysRouter());
+
+  return router;
+}
+
+/**
+ * Starts the standalone read-only stats API on its own port. Set API_PORT
+ * to 0 to turn it off entirely -- the dashboard's own copy of these routes
+ * (on WEB_PORT) is unaffected either way.
+ */
+export function registerApiServer(): void {
+  if (!config.apiPort) {
+    console.log("Stats API disabled (API_PORT=0)");
+    return;
+  }
+
+  const api = express();
+  api.use(apiRouter());
 
   api.listen(config.apiPort, () => {
     console.log(`Stats API listening on :${config.apiPort}`);

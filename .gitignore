@@ -4,3 +4,6 @@ dist/
 data/*.db
 data/*.db-journal
 *.log
+dashboard/node_modules/
+dashboard/dist/
+dashboard/*.tsbuildinfo

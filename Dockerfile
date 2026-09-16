@@ -14,6 +14,11 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+# The dashboard is a separate Vite/React project, built to static files and
+# served by the bot's own web server (see src/web/server.ts).
+COPY dashboard ./dashboard
+RUN cd dashboard && npm ci && npm run build
+
 RUN mkdir -p /app/data
 
 ENV NODE_ENV=production

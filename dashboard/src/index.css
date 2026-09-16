@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root {
+  --background: #f9f9f7;
+  --foreground: #0b0b0b;
+  --card: #fcfcfb;
+  --card-foreground: #0b0b0b;
+  --muted: #f0efec;
+  --muted-foreground: #52514e;
+  --border: rgba(11, 11, 11, 0.1);
+  --ring: #2a78d6;
+  --primary: #2a78d6;
+  --primary-foreground: #fcfcfb;
+  --accent: #f0efec;
+  --accent-foreground: #0b0b0b;
+  --radius: 0.75rem;
+
+  /* Status palette -- fixed, never themed differently per light/dark beyond
+     the pre-validated dark steps below. Reserved for ticket status only. */
+  --status-open: #d03b3b;
+  --status-in-progress: #fab219;
+  --status-closed: #0ca30c;
+
+  /* Sequential single hue, for the leaderboard's magnitude bars. */
+  --series-primary: #2a78d6;
+
+  --chart-grid: #e1e0d9;
+  --chart-axis: #c3c2b7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0d0d0d;
+    --foreground: #ffffff;
+    --card: #1a1a19;
+    --card-foreground: #ffffff;
+    --muted: #232322;
+    --muted-foreground: #c3c2b7;
+    --border: rgba(255, 255, 255, 0.1);
+    --ring: #3987e5;
+    --primary: #3987e5;
+    --primary-foreground: #0d0d0d;
+    --accent: #232322;
+    --accent-foreground: #ffffff;
+
+    --status-open: #e66767;
+    --status-in-progress: #c98500;
+    --status-closed: #0ca30c;
+    --series-primary: #3987e5;
+
+    --chart-grid: #2c2c2a;
+    --chart-axis: #383835;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0d0d0d;
+  --foreground: #ffffff;
+  --card: #1a1a19;
+  --card-foreground: #ffffff;
+  --muted: #232322;
+  --muted-foreground: #c3c2b7;
+  --border: rgba(255, 255, 255, 0.1);
+  --ring: #3987e5;
+  --primary: #3987e5;
+  --primary-foreground: #0d0d0d;
+  --accent: #232322;
+  --accent-foreground: #ffffff;
+
+  --status-open: #e66767;
+  --status-in-progress: #c98500;
+  --status-closed: #0ca30c;
+  --series-primary: #3987e5;
+
+  --chart-grid: #2c2c2a;
+  --chart-axis: #383835;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

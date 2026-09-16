@@ -1,6 +1,6 @@
 # Hestia
 
-A support ticket bot for Slack, one instance serving many `#...-help` channels ("Programs") at once. Everything about running a ticket, and everything about configuring a Program, lives inside Slack, no web dashboard, no separate database UI. It also ships two tiny plain HTTP servers: a read-only JSON stats API (unauthenticated by design, since the stats are meant to be public info) and a placeholder web page.
+A support ticket bot for Slack, one instance serving many `#...-help` channels ("Programs") at once. Everything about *running* a ticket, and everything about *configuring* a Program, lives inside Slack, no admin UI outside of it. It also ships a read-only JSON stats API (unauthenticated by design, since the stats are meant to be public info), a small dashboard that visualizes that same data, and a Nephthys-compatible proxy for anything already built against [Nephthys](https://github.com/hackclub/nephthys)'s API.
 
 ## Programs, and who can do what
 
@@ -26,7 +26,7 @@ A **Program** is one help channel + one private "BTS" channel (daily summaries, 
 - Post again *shortly* after opening a ticket (an accidental double-post) and Hestia redirects you back to that thread with a ping, instead of opening a duplicate. Wait long enough and a second message is treated as a genuinely new ticket, you can have more than one open at a time
 - **App Home** tab with three views (switch with the buttons up top, and it remembers whichever one you were on last), public to the whole workspace: an overview (a ticket-status pie chart, total/24h stat boxes with hang time, and a two-column all-time/24h leaderboard, all scoped to whichever Program is selected via a dropdown anyone can use), "my tickets" (whatever's currently assigned to you in that Program), and, super admins only, **admin** (add/edit Programs)
 - A **daily summary** is posted automatically per Program, to its own BTS channel
-- A **read-only stats API** and a **placeholder web page**, both plain HTTP, no API keys
+- A **read-only stats API**, a **dashboard** (charts, leaderboards, a ticket list), and a **Nephthys-compatible proxy**, all plain HTTP, no API keys
 - Every button is lowercase with no emoji, on purpose
 
 ## Stack
@@ -35,7 +35,8 @@ A **Program** is one help channel + one private "BTS" channel (daily summaries, 
 - [`@slack/bolt`](https://slack.dev/bolt-js/) running in **Socket Mode**, no public URL needed for the bot itself
 - `better-sqlite3` for storage, a single local file, no separate database server
 - `node-cron` for the daily summary schedule
-- `express` for the stats API and the placeholder page
+- `express` for the stats API and the dashboard's server
+- The dashboard itself (`dashboard/`) is a separate Vite + React + TypeScript + Tailwind project (shadcn/ui-style components, Recharts for the charts), built to static files and served by the same `express` server
 
 ## Project layout
 
@@ -44,9 +45,10 @@ src/
   config.ts                 env var loading / validation (credentials, ports, cron, super admins)
   index.ts                  entrypoint, wires everything up, runs the legacy migration once
   api/
-    server.ts                read-only stats API (express, port 7778 by default)
+    server.ts                read-only stats API (express, port 7778 by default), shared apiRouter()
+    nephthysAdapter.ts       reshapes the same data into Nephthys's response shapes, per Program
   web/
-    server.ts                placeholder page (express, port 7777 by default)
+    server.ts                serves dashboard/dist plus the same apiRouter() under /api (port 7777)
   db/
     index.ts                sqlite connection + schema + migrations
     tickets.ts               ticket queries (create, resolve, reopen, leaderboard, stats), all program-scoped
@@ -75,6 +77,10 @@ src/
       statusChart.ts              builds the quickchart.io pie chart URL
     summary/
       dailySummary.ts        cron job, loops every Program and posts to its own BTS channel
+dashboard/                   separate Vite/React project, the dashboard on WEB_PORT
+  src/
+    lib/api.ts                 fetch wrappers for the same /api/* routes
+    components/                stat cards, pie chart, leaderboard bars, tickets table
 ```
 
 ## Setup
@@ -91,7 +97,9 @@ src/
 ```bash
 cp .env.example .env
 npm install
-npm run dev     # runs with tsx + auto-reload
+npm run build:dashboard   # builds dashboard/dist -- optional, the dashboard just
+                          # shows a placeholder message on WEB_PORT without it
+npm run dev               # runs with tsx + auto-reload
 # or
 npm run build && npm start
 ```
@@ -135,14 +143,15 @@ If you're that Program's admin or a super admin, an **edit program** button sits
 
 The `Hestia` title uses Block Kit's `header` block, which is already the single largest text style Slack offers, there's no way to make it visually bigger than that from Block Kit alone.
 
-## Stats API and placeholder page
+## Stats API, dashboard, and Nephthys proxy
 
-Two small express servers start automatically, no auth on either, on purpose (the API is GET-only, there's nothing to protect, and the stats it exposes are meant to be public info same as the Home tab). Full endpoint docs with example responses live in [`API.md`](./API.md); the short version:
+Two small express servers start automatically, no auth on either, on purpose (every route is GET-only, there's nothing to protect, and the stats exposed are meant to be public info same as the Home tab). Full endpoint docs with example responses live in [`API.md`](./API.md); the short version:
 
 - **Stats API**, `API_PORT` (default `7778`): `/health`, `/api/programs`, `/api/overview`, `/api/tickets`, `/api/tickets/:id`, `/api/users/:userId/stats`, `/api/leaderboard`, all JSON, most take a `programId`.
-- **Placeholder page**, `WEB_PORT` (default `7777`): just returns `hi`, swap in something real later.
+- **Dashboard**, `WEB_PORT` (default `7777`): a small Vite/React app (`dashboard/`) with a Program switcher, stat cards, a ticket-status pie chart, all-time and past-24h leaderboards, and a recent-tickets table -- all fetching the exact same API above, mounted same-origin under `/api` on this port too so there's no CORS to configure. Run `npm run build:dashboard` before starting Hestia (the Dockerfile does this automatically); without a build, this port just serves a plain-text placeholder instead of crashing.
+- **Nephthys-compatible proxy**, also on `API_PORT`, under `/nepththys/:program/...`: reshapes one Program's own ticket data into the response shapes documented for [Nephthys](https://github.com/hackclub/nephthys/blob/main/docs/api.md) (`/api/stats_v2`, `/api/tickets`, `/api/ticket`), so anything already built against a Nephthys instance can point at Hestia instead by swapping its base URL and Program slug (a lowercased, hyphenated version of the Program's name, e.g. "Hackatime Squad" -> `hackatime-squad`). It's a read-only translation layer over Hestia's own data, not a reimplementation of Nephthys -- see the "Fields Hestia can't fill in honestly" note in `API.md` for the handful of Nephthys fields Hestia has no equivalent data for (`team_tags`, `reopened_by`, and the numeric side of `id` on a Nephthys `User`).
 
-Set either port to `0` in `.env` to turn that server off.
+Set `API_PORT` or `WEB_PORT` to `0` in `.env` to turn that server off; the Nephthys proxy lives on `API_PORT` so it goes with it.
 
 ### Pointing a domain at it
 
@@ -165,8 +174,8 @@ This repo only exposes the ports, container to host, DNS and a reverse proxy are
 ## Notes
 
 - All state, tickets and Program config alike, lives in the sqlite file at `DB_PATH` (default `./data/hestia.db`). Back that file up if you care about any of it.
-- Socket Mode means the Slack side of the bot needs no inbound HTTP endpoint, only the stats API and placeholder page do.
+- Socket Mode means the Slack side of the bot needs no inbound HTTP endpoint, only the stats API and dashboard do.
 
 ## Verifying a change
 
-No web dashboard means there's nothing to click through outside Slack itself. After deploying: open the Home tab's admin tab and add (or confirm) a Program, post a message in its help channel and watch the greeting reply appear, claim/resolve/reopen it, switch the Program dropdown, edit that Program's quick replies (including pinging a bot) from **edit program**, and confirm the next daily summary posts separately per Program to each one's BTS channel.
+Configuring Hestia happens entirely in Slack, but the results also show up on the dashboard. After deploying: open the Home tab's admin tab and add (or confirm) a Program, post a message in its help channel and watch the greeting reply appear, claim/resolve/reopen it, switch the Program dropdown, edit that Program's quick replies (including pinging a bot) from **edit program**, confirm the next daily summary posts separately per Program to each one's BTS channel, and open the dashboard on `WEB_PORT` to see the same ticket show up in its stats and table.

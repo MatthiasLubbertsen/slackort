@@ -13,6 +13,7 @@ export interface Ticket {
   subject: string;
   status: TicketStatus;
   assigned_to: string | null;
+  assigned_at: number | null;
   program_id: number;
   created_at: number;
   resolved_at: number | null;
@@ -103,8 +104,70 @@ export function deleteTicket(ticketId: number): void {
 }
 
 export function claimTicket(ticketId: number, userId: string): Ticket {
-  db.prepare(`UPDATE tickets SET assigned_to = ? WHERE id = ?`).run(userId, ticketId);
+  db.prepare(`UPDATE tickets SET assigned_to = ?, assigned_at = ? WHERE id = ?`).run(
+    userId,
+    Date.now(),
+    ticketId
+  );
   return getTicketById(ticketId)!;
+}
+
+/** Every ticket claimed within [start, end), regardless of its current state. */
+export function ticketsAssignedBetween(programId: number, start: number, end: number): Ticket[] {
+  return db
+    .prepare(
+      `SELECT * FROM tickets WHERE program_id = ? AND assigned_at IS NOT NULL AND assigned_at >= ? AND assigned_at < ?`
+    )
+    .all(programId, start, end) as Ticket[];
+}
+
+/** The longest-waiting still-unclaimed ticket in a program, if any. */
+export function oldestOpenUnclaimedTicket(programId: number): Ticket | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM tickets WHERE program_id = ? AND status = 'open' AND assigned_to IS NULL
+       ORDER BY created_at ASC LIMIT 1`
+    )
+    .get(programId) as Ticket | undefined;
+}
+
+/**
+ * Tickets in one program filtered by their derived `TicketCategory` (not the
+ * raw `status` column) and optionally by when they were created. Capped at a
+ * few thousand rows since nothing calling this paginates.
+ */
+export function listTicketsByCategory(opts: {
+  programId?: number;
+  category?: TicketCategory;
+  createdAfter?: number;
+  createdBefore?: number;
+}): Ticket[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (opts.programId) {
+    conditions.push("program_id = ?");
+    params.push(opts.programId);
+  }
+  if (opts.createdAfter !== undefined) {
+    conditions.push("created_at >= ?");
+    params.push(opts.createdAfter);
+  }
+  if (opts.createdBefore !== undefined) {
+    conditions.push("created_at < ?");
+    params.push(opts.createdBefore);
+  }
+  if (opts.category === "closed") {
+    conditions.push("status = 'resolved'");
+  } else if (opts.category === "open") {
+    conditions.push("status = 'open' AND assigned_to IS NULL");
+  } else if (opts.category === "in_progress") {
+    conditions.push("status = 'open' AND assigned_to IS NOT NULL");
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  return db
+    .prepare(`SELECT * FROM tickets ${where} ORDER BY created_at DESC LIMIT 5000`)
+    .all(...params) as Ticket[];
 }
 
 export function getTicketsAssignedTo(userId: string, programId: number): Ticket[] {
@@ -290,4 +353,93 @@ export function leaderboard(programId: number, sinceMs?: number): LeaderboardRow
        GROUP BY resolved_by ORDER BY count DESC LIMIT 10`
     )
     .all(programId) as LeaderboardRow[];
+}
+
+/** Same as `leaderboard`, but for a bounded [start, end) window instead of just a lower bound. */
+export function leaderboardBetween(programId: number, start: number, end: number): LeaderboardRow[] {
+  return db
+    .prepare(
+      `SELECT resolved_by, COUNT(*) as count FROM tickets
+       WHERE program_id = ? AND status = 'resolved' AND resolved_at >= ? AND resolved_at < ?
+       GROUP BY resolved_by ORDER BY count DESC LIMIT 10`
+    )
+    .all(programId, start, end) as LeaderboardRow[];
+}
+
+interface TicketTimingRow {
+  created_at: number;
+  assigned_at: number | null;
+  resolved_at: number | null;
+}
+
+function ticketTimingRows(
+  programId: number,
+  statusFilter: TicketStatus | undefined,
+  start?: number,
+  end?: number
+): TicketTimingRow[] {
+  const conditions = ["program_id = ?"];
+  const params: unknown[] = [programId];
+  if (statusFilter) {
+    conditions.push("status = ?");
+    params.push(statusFilter);
+  }
+  if (start !== undefined) {
+    conditions.push("created_at >= ?");
+    params.push(start);
+  }
+  if (end !== undefined) {
+    conditions.push("created_at < ?");
+    params.push(end);
+  }
+  return db
+    .prepare(`SELECT created_at, assigned_at, resolved_at FROM tickets WHERE ${conditions.join(" AND ")}`)
+    .all(...params) as TicketTimingRow[];
+}
+
+function meanMinutes(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/** Mean time-to-resolution, in minutes, for resolved tickets created within [start, end) if given. Null if none. */
+export function averageResolutionMinutesBetween(
+  programId: number,
+  start?: number,
+  end?: number
+): number | null {
+  const now = Date.now();
+  const rows = ticketTimingRows(programId, "resolved", start, end);
+  return meanMinutes(rows.map((t) => ((t.resolved_at ?? now) - t.created_at) / 60000));
+}
+
+/**
+ * Minutes from creation to first claim, Hestia's best available proxy for
+ * "time to first helper response" since it has no separate first-reply
+ * timestamp. A still-unclaimed ticket counts as hanging until now; a
+ * resolved ticket that was never explicitly claimed (someone just replied
+ * "i get it now" or closed it with a quick reply) falls back to its
+ * resolution time, the closest thing recorded to "somebody responded".
+ */
+function responseMinutes(rows: TicketTimingRow[]): number[] {
+  const now = Date.now();
+  return rows.map((t) => ((t.assigned_at ?? t.resolved_at ?? now) - t.created_at) / 60000);
+}
+
+/** Mean response time (see `responseMinutes`) for tickets still unresolved, created within [start, end) if given. Null if none. */
+export function averageResponseTimeMinutesUnresolved(
+  programId: number,
+  start?: number,
+  end?: number
+): number | null {
+  return meanMinutes(responseMinutes(ticketTimingRows(programId, "open", start, end)));
+}
+
+/** Mean response time (see `responseMinutes`) across every ticket regardless of resolved state, created within [start, end) if given. Null if none. */
+export function averageResponseTimeMinutesAll(
+  programId: number,
+  start?: number,
+  end?: number
+): number | null {
+  return meanMinutes(responseMinutes(ticketTimingRows(programId, undefined, start, end)));
 }

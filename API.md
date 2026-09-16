@@ -49,9 +49,9 @@ Category counts (all-time and past 24h) and hang time for one Program, plus its 
     "hangTimeMinutes": 41
   },
   "leaderboard": {
-    "past24h": [{ "resolved_by": "U012ABC", "count": 4 }],
-    "weekly": [{ "resolved_by": "U012ABC", "count": 19 }],
-    "allTime": [{ "resolved_by": "U012ABC", "count": 201 }]
+    "past24h": [{ "resolved_by": "U012ABC", "count": 4, "resolvedByName": "elliott" }],
+    "weekly": [{ "resolved_by": "U012ABC", "count": 19, "resolvedByName": "elliott" }],
+    "allTime": [{ "resolved_by": "U012ABC", "count": 201, "resolvedByName": "elliott" }]
   }
 }
 ```
@@ -138,8 +138,96 @@ One Slack user's ticket history as an *opener*, within one Program. `programId` 
 Just the leaderboard rows for one Program. `programId` is required; `range` defaults to all-time.
 
 ```json
-{ "leaderboard": [{ "resolved_by": "U012ABC", "count": 201 }] }
+{ "leaderboard": [{ "resolved_by": "U012ABC", "count": 201, "resolvedByName": "elliott" }] }
 ```
+
+## Nephthys-compatible proxy
+
+Everything under `/nepththys/:program/` reshapes the same ticket data above into the response shapes documented for [Nephthys](https://github.com/hackclub/nephthys/blob/main/docs/api.md), so anything already built against a real Nephthys instance can point at Hestia instead by swapping its base URL. This is a translation layer, not a reimplementation -- there's no Nephthys storage or Slack app underneath it, just a reshaping of Hestia's own Program data.
+
+`:program` is a slug: the Program's `name`, lowercased, with runs of non-alphanumeric characters collapsed to single hyphens (e.g. "Hackatime Squad" -> `hackatime-squad`). `404` with `{"error": "..."}` if nothing matches.
+
+### `GET /nepththys/:program/api/stats_v2`
+
+Same shape as Nephthys's own `stats_v2`: `all_time`, `past_24h`, `past_24h_previous`, `past_7d`, `past_7d_previous`, each with ticket counts, a helpers leaderboard, three mean-time-in-minutes fields, and (on `all_time` only) the oldest still-unclaimed ticket.
+
+```json
+{
+  "all_time": {
+    "tickets_total": 412,
+    "tickets_open": 6,
+    "tickets_closed": 403,
+    "tickets_in_progress": 3,
+    "helpers_leaderboard": [{ "id": 0, "slack_id": "U012ABC", "count": 201 }],
+    "mean_hang_time_minutes_unresolved": 38.2,
+    "mean_hang_time_minutes_all": 12.4,
+    "mean_resolution_time_minutes": 47.9,
+    "oldest_unanswered_ticket": {
+      "id": 55,
+      "created_at": "2026-06-01T12:00:00.000Z",
+      "age_minutes": 130,
+      "link": "https://hackclub.slack.com/archives/C0123/p1717000000000100"
+    }
+  },
+  "past_24h": { "new_tickets_total": 18, "...": "see TimeBoundStats below" },
+  "past_24h_previous": { "...": "..." },
+  "past_7d": { "...": "..." },
+  "past_7d_previous": { "...": "..." }
+}
+```
+
+Each `TimeBoundStats` object (`past_24h` etc.) looks like:
+
+```json
+{
+  "new_tickets_total": 18,
+  "new_tickets_now_closed": 15,
+  "new_tickets_still_open": 2,
+  "new_tickets_in_progress": 1,
+  "closed_today": 20,
+  "closed_today_from_today": 15,
+  "assigned_today_in_progress": 4,
+  "helpers_leaderboard": [{ "id": 0, "slack_id": "U012ABC", "count": 4 }],
+  "mean_hang_time_minutes_unresolved": 22.1,
+  "mean_hang_time_minutes_all": 9.8,
+  "mean_resolution_time_minutes": 33.5
+}
+```
+
+### `GET /nepththys/:program/api/tickets`
+
+Same query params as Nephthys documents (`status=open|closed|in_progress`, `since`/`after`, `until`/`before`, ISO 8601 dates), returning a bare array (not wrapped in an object, matching Nephthys):
+
+```json
+[
+  {
+    "id": 88,
+    "title": "my hackatime heartbeats aren't showing up",
+    "status": "CLOSED",
+    "opened_by": { "id": 0, "slack_id": "U0OPENER", "username": null },
+    "closed_by": { "id": 0, "slack_id": "U012ABC", "username": null },
+    "assigned_to": { "id": 0, "slack_id": "U012ABC", "username": null },
+    "reopened_by": null,
+    "team_tags": [],
+    "created_at": "2026-05-30T09:00:00.000Z",
+    "closed_at": "2026-05-30T09:15:00.000Z",
+    "message_ts": "1717000000.000100"
+  }
+]
+```
+
+### `GET /nepththys/:program/api/ticket?id=<id>`
+
+One ticket in the same shape as above. `404` if it doesn't exist or belongs to a different Program.
+
+### Fields Hestia can't fill in honestly
+
+A few fields in Nephthys's shape have nothing in Hestia's data model to map from. Rather than drop them (and break the shape), they're filled with a documented placeholder:
+
+- **`User.id`** is always `0`. Nephthys users have their own internal integer ID; Hestia only ever has a Slack user ID. `slack_id` is the field with real information in it.
+- **`reopened_by`** is always `null`. Reopening a ticket in Hestia just clears its resolution fields, it never records who reopened it.
+- **`team_tags`** is always `[]`. Hestia has no tagging concept for tickets.
+- **`mean_hang_time_minutes_*`** use a ticket's first-claim time (`assigned_at`) as a stand-in for "time to first helper response," since Hestia has no separate first-reply timestamp. A ticket that was resolved without ever being explicitly claimed (someone just clicked "i get it now," or closed it with a quick reply) falls back to its resolution time for this one.
 
 ## Notes
 
