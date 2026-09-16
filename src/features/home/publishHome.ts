@@ -26,7 +26,7 @@ function renderLeaderboard(rows: LeaderboardRow[]): string {
   return rows.map((row, i) => `${i + 1}. <@${row.resolved_by}>, ${row.count} resolved`).join("\n");
 }
 
-function tabSwitcherBlock(activeTab: HomeTab, admin: boolean): KnownBlock {
+function tabSwitcherBlock(activeTab: HomeTab, admin: boolean, editableProgram?: Program): KnownBlock {
   return {
     type: "actions",
     block_id: "home_tabs",
@@ -50,6 +50,16 @@ function tabSwitcherBlock(activeTab: HomeTab, admin: boolean): KnownBlock {
               text: { type: "plain_text" as const, text: "admin" },
               action_id: "home_tab_admin",
               style: activeTab === "admin" ? ("primary" as const) : undefined,
+            },
+          ]
+        : []),
+      ...(editableProgram
+        ? [
+            {
+              type: "button" as const,
+              text: { type: "plain_text" as const, text: "edit program" },
+              action_id: `edit_program:${editableProgram.id}`,
+              value: String(editableProgram.id),
             },
           ]
         : []),
@@ -88,7 +98,7 @@ function statsBoxText(
   return `*${title}*\nTotal: ${counts.total}, Open: ${counts.open}, In Progress: ${counts.inProgress}, ${closedLine}\nHang time: ${Math.round(hangTimeMinutes)} minutes`;
 }
 
-function overviewBlocks(program: Program, userId: string): KnownBlock[] {
+function overviewBlocks(program: Program): KnownBlock[] {
   const allTime = ticketCategoryCounts(program.id);
   const dayStart = Date.now() - ONE_DAY_MS;
   const last24h = ticketCategoryCounts(program.id, dayStart);
@@ -127,23 +137,6 @@ function overviewBlocks(program: Program, userId: string): KnownBlock[] {
       ],
     },
   ];
-
-  if (program.admin_user_id === userId || isSuperAdmin(userId)) {
-    blocks.push(
-      { type: "divider" },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "program settings" },
-            action_id: `program_settings:${program.id}`,
-            value: String(program.id),
-          },
-        ],
-      }
-    );
-  }
 
   return blocks;
 }
@@ -233,6 +226,11 @@ function adminBlocks(): KnownBlock[] {
           action_id: "add_program",
           style: "primary",
         },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "default quick replies" },
+          action_id: "open_default_quick_replies",
+        },
       ],
     }
   );
@@ -255,30 +253,36 @@ export async function publishHomeView(
   // just the ones they help with. "My tickets" naturally comes up empty for
   // anyone who isn't a helper, which is fine, nothing sensitive in that.
   const allPrograms = listPrograms();
+
+  let selectedProgram: Program | undefined;
+  if (activeTab !== "admin" && allPrograms.length > 0) {
+    const selectedId = programId ?? getSelectedProgramId(userId);
+    selectedProgram = allPrograms.find((p) => p.id === selectedId) ?? allPrograms[0];
+  }
+  const canEditSelected =
+    !!selectedProgram && (admin || selectedProgram.admin_user_id === userId);
+
   const blocks: KnownBlock[] = [
     { type: "header", text: { type: "plain_text", text: "Hestia", emoji: true } },
-    tabSwitcherBlock(activeTab, admin),
+    tabSwitcherBlock(activeTab, admin, canEditSelected ? selectedProgram : undefined),
   ];
 
   if (activeTab === "admin") {
     blocks.push(...adminBlocks());
-  } else if (allPrograms.length === 0) {
+  } else if (!selectedProgram) {
     blocks.push({
       type: "section",
       text: { type: "mrkdwn", text: "No programs configured yet." },
     });
   } else {
-    const selectedId = programId ?? getSelectedProgramId(userId);
-    const program = allPrograms.find((p) => p.id === selectedId) ?? allPrograms[0];
-
     if (allPrograms.length > 1) {
-      blocks.push(programPickerBlock(allPrograms, program));
+      blocks.push(programPickerBlock(allPrograms, selectedProgram));
     }
 
     blocks.push(
       ...(activeTab === "overview"
-        ? overviewBlocks(program, userId)
-        : await mineBlocks(userId, program))
+        ? overviewBlocks(selectedProgram)
+        : await mineBlocks(userId, selectedProgram))
     );
   }
 

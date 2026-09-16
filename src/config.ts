@@ -46,7 +46,6 @@ export const config = {
   legacy: {
     supportChannelId: process.env.SUPPORT_CHANNEL_ID,
     summaryChannelId: process.env.SUMMARY_CHANNEL_ID || process.env.SUPPORT_CHANNEL_ID,
-    supportUsergroupId: process.env.SUPPORT_USERGROUP_ID,
     faqCanvasUrl: process.env.FAQ_CANVAS_URL,
     stardanceAdminUrl: process.env.STARDANCE_ADMIN_URL,
   },

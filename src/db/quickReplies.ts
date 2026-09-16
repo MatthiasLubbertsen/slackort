@@ -1,4 +1,5 @@
 import { db } from "./index";
+import { slugifyKey } from "../utils/slugifyKey";
 
 export interface QuickReply {
   id: number;
@@ -23,11 +24,6 @@ export function findQuickReplyByKey(programId: number, key: string): QuickReply 
   return db
     .prepare(`SELECT * FROM quick_replies WHERE program_id = ? AND key = ?`)
     .get(programId, key) as QuickReply | undefined;
-}
-
-function slugifyKey(label: string): string {
-  const base = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return base || "reply";
 }
 
 export function addQuickReply(programId: number, label: string, message: string): QuickReply {

@@ -12,9 +12,20 @@ import type { Ticket } from "../../db/tickets";
 import { getProgramById, type Program } from "../../db/programs";
 import { listQuickReplies, findQuickReplyByKey } from "../../db/quickReplies";
 import { app } from "../../slack/app";
-import { isUsergroupMember } from "../../slack/helpers";
+import { isChannelMember } from "../../slack/helpers";
 import { getFriendlyName } from "../../slack/userName";
+import { getUserEmail } from "../../slack/userEmail";
 import { buildResolvedAnnouncementBlocks, buildTicketIntroBlocks } from "./blocks";
+
+/** Fills in {userId} and {email} in an admin panel link template for one opener. */
+async function renderAdminUrl(client: WebClient, template: string, userId: string): Promise<string> {
+  let url = template;
+  if (url.includes("{email}")) {
+    const email = await getUserEmail(client, userId);
+    url = url.replaceAll("{email}", encodeURIComponent(email ?? ""));
+  }
+  return url.replaceAll("{userId}", encodeURIComponent(userId));
+}
 
 async function infoModalView(client: WebClient, ticket: Ticket, program: Program): Promise<ModalView> {
   const openerName = await getFriendlyName(client, ticket.opener_id);
@@ -36,7 +47,7 @@ async function infoModalView(client: WebClient, ticket: Ticket, program: Program
   ];
 
   if (program.admin_url_template) {
-    const adminUrl = `${program.admin_url_template}?query=${encodeURIComponent(ticket.opener_id)}`;
+    const adminUrl = await renderAdminUrl(client, program.admin_url_template, ticket.opener_id);
     blocks.push(
       { type: "divider" },
       {
@@ -44,9 +55,9 @@ async function infoModalView(client: WebClient, ticket: Ticket, program: Program
         elements: [
           {
             type: "button",
-            text: { type: "plain_text", text: "open in stardance admin" },
+            text: { type: "plain_text", text: "open admin panel" },
             url: adminUrl,
-            action_id: "open_stardance_admin",
+            action_id: "open_admin_panel",
           },
         ],
       }
@@ -128,7 +139,7 @@ export function registerUserInfoModal(): void {
     const program = getProgramById(ticket.program_id);
     if (!program) return;
 
-    const allowed = await isUsergroupMember(body.user.id, program.usergroup_id);
+    const allowed = await isChannelMember(body.user.id, program.bts_channel_id);
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: ticket.channel_id,
@@ -146,7 +157,7 @@ export function registerUserInfoModal(): void {
   });
 
   // Buttons with a `url` still fire an interaction payload -- just ack it, Slack opens the link itself.
-  app.action("open_stardance_admin", async ({ ack }) => {
+  app.action("open_admin_panel", async ({ ack }) => {
     await ack();
   });
 
@@ -160,7 +171,7 @@ export function registerUserInfoModal(): void {
     if (!ticket || ticket.status !== "open") return;
     const program = getProgramById(ticket.program_id);
     if (!program) return;
-    if (!(await isUsergroupMember(body.user.id, program.usergroup_id))) return;
+    if (!(await isChannelMember(body.user.id, program.bts_channel_id))) return;
 
     const updated = claimTicket(ticket.id, body.user.id);
 
@@ -185,7 +196,7 @@ export function registerUserInfoModal(): void {
     const reply = findQuickReplyByKey(program.id, reasonKey);
     if (!reply) return;
 
-    if (!(await isUsergroupMember(body.user.id, program.usergroup_id))) return;
+    if (!(await isChannelMember(body.user.id, program.bts_channel_id))) return;
 
     if (ticket.status === "resolved") {
       await client.views.update({
@@ -241,7 +252,7 @@ export function registerUserInfoModal(): void {
     if (!ticket) return;
     const program = getProgramById(ticket.program_id);
     if (!program) return;
-    if (!(await isUsergroupMember(body.user.id, program.usergroup_id))) return;
+    if (!(await isChannelMember(body.user.id, program.bts_channel_id))) return;
 
     if (ticket.reply_ts) {
       await client.chat.delete({ channel: ticket.channel_id, ts: ticket.reply_ts }).catch(() => {});

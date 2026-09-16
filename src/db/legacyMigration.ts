@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { createProgram, listPrograms } from "./programs";
 import { addQuickReply } from "./quickReplies";
+import { seedDefaultQuickRepliesInto } from "./defaultQuickReplies";
 import { backfillProgramId } from "./tickets";
 
 /**
@@ -12,10 +13,9 @@ import { backfillProgramId } from "./tickets";
 function createLegacyProgramIfNeeded(): void {
   if (listPrograms().length > 0) return;
 
-  const { supportChannelId, summaryChannelId, supportUsergroupId, faqCanvasUrl, stardanceAdminUrl } =
-    config.legacy;
+  const { supportChannelId, summaryChannelId, faqCanvasUrl, stardanceAdminUrl } = config.legacy;
 
-  if (!supportChannelId || !summaryChannelId || !supportUsergroupId) {
+  if (!supportChannelId || !summaryChannelId) {
     return;
   }
 
@@ -26,7 +26,6 @@ function createLegacyProgramIfNeeded(): void {
     name: "Legacy program",
     helpChannelId: supportChannelId,
     btsChannelId: summaryChannelId,
-    usergroupId: supportUsergroupId,
     adminUserId,
     faqUrl: faqCanvasUrl ?? null,
     adminUrlTemplate: stardanceAdminUrl ?? null,
@@ -42,6 +41,7 @@ function createLegacyProgramIfNeeded(): void {
     "hackatime",
     "Hi, would you mind redirecting your Hackatime questions to letterbird.co/hackatime?"
   );
+  seedDefaultQuickRepliesInto(program.id);
 
   console.log(
     `Migrated legacy .env config into Program #${program.id} ("Legacy program"). Rename/edit it from the admin tab whenever you like.`

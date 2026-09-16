@@ -6,7 +6,6 @@ export interface Program {
   name: string;
   help_channel_id: string;
   bts_channel_id: string;
-  usergroup_id: string;
   admin_user_id: string;
   welcome_message: string | null;
   faq_url: string | null;
@@ -22,7 +21,6 @@ export function createProgram(input: {
   name: string;
   helpChannelId: string;
   btsChannelId: string;
-  usergroupId: string;
   adminUserId: string;
   welcomeMessage?: string | null;
   faqUrl?: string | null;
@@ -31,14 +29,13 @@ export function createProgram(input: {
   const result = db
     .prepare(
       `INSERT INTO programs
-         (name, help_channel_id, bts_channel_id, usergroup_id, admin_user_id, welcome_message, faq_url, admin_url_template, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (name, help_channel_id, bts_channel_id, admin_user_id, welcome_message, faq_url, admin_url_template, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.name,
       input.helpChannelId,
       input.btsChannelId,
-      input.usergroupId,
       input.adminUserId,
       input.welcomeMessage ?? null,
       input.faqUrl ?? null,
@@ -54,7 +51,6 @@ export function updateProgram(
     name: string;
     helpChannelId: string;
     btsChannelId: string;
-    usergroupId: string;
     adminUserId: string;
     welcomeMessage: string | null;
     faqUrl: string | null;
@@ -65,7 +61,6 @@ export function updateProgram(
     name: "name",
     helpChannelId: "help_channel_id",
     btsChannelId: "bts_channel_id",
-    usergroupId: "usergroup_id",
     adminUserId: "admin_user_id",
     welcomeMessage: "welcome_message",
     faqUrl: "faq_url",

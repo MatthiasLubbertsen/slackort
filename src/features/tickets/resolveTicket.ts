@@ -32,7 +32,7 @@ export function registerResolveTicket(): void {
       return;
     }
 
-    const allowed = await canResolve(body.user.id, ticket.opener_id, program.usergroup_id);
+    const allowed = await canResolve(body.user.id, ticket.opener_id, program.bts_channel_id);
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
@@ -105,7 +105,7 @@ export function registerResolveTicket(): void {
     }
 
     // Opener or helper, same as resolving.
-    const allowed = await canResolve(body.user.id, ticket.opener_id, program.usergroup_id);
+    const allowed = await canResolve(body.user.id, ticket.opener_id, program.bts_channel_id);
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: body.channel.id!,

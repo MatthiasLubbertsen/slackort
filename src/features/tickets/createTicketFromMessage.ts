@@ -10,7 +10,7 @@ import {
 import { getProgramByHelpChannel } from "../../db/programs";
 import { buildTicketIntroBlocks } from "./blocks";
 import { getFriendlyName } from "../../slack/userName";
-import { isUsergroupMember } from "../../slack/helpers";
+import { isChannelMember } from "../../slack/helpers";
 
 const SUBJECT_MAX_LENGTH = 120;
 
@@ -46,7 +46,7 @@ export function registerCreateTicketFromMessage(): void {
         ticket &&
         ticket.status === "open" &&
         !ticket.assigned_to &&
-        (await isUsergroupMember(senderId, program.usergroup_id))
+        (await isChannelMember(senderId, program.bts_channel_id))
       ) {
         claimTicket(ticket.id, senderId);
       }

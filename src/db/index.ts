@@ -43,10 +43,31 @@ db.exec(`
     admin_url_template TEXT,
     created_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS default_quick_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    label TEXT NOT NULL,
+    message TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 function tableExists(name: string): boolean {
   return !!db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name);
+}
+
+function hasColumn(table: string, column: string): boolean {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return columns.some((c) => c.name === column);
+}
+
+// Who counts as a helper is now membership in a Program's bts channel, not a
+// ping usergroup -- anyone can add themselves to a usergroup, but the bts
+// channel is something a super admin actually invites people to. Drop the
+// now-unused column.
+if (hasColumn("programs", "usergroup_id")) {
+  db.exec(`ALTER TABLE programs DROP COLUMN usergroup_id`);
 }
 
 // program_shortcuts was renamed to quick_replies before this ever shipped
