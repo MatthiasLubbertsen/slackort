@@ -25,19 +25,28 @@ function isUniqueConstraintError(err: unknown): boolean {
   return err instanceof Error && err.message.includes("UNIQUE constraint failed");
 }
 
-async function usergroupOptions(client: WebClient) {
+async function usergroupOptions(client: WebClient, query?: string) {
   const result = await client.usergroups.list({});
-  return (result.usergroups ?? []).map((ug) => ({
+  const q = (query ?? "").toLowerCase();
+  const all = (result.usergroups ?? []).map((ug) => ({
     text: { type: "plain_text" as const, text: `${ug.name} (@${ug.handle})` },
     value: ug.id!,
+    // keep around for filtering, stripped before being sent back to Slack
+    search: `${ug.name} ${ug.handle}`.toLowerCase(),
   }));
+  const filtered = q ? all.filter((o) => o.search.includes(q)) : all;
+  return filtered.slice(0, 100).map(({ search: _search, ...option }) => option);
 }
 
 async function buildProgramModal(client: WebClient, program?: Program): Promise<ModalView> {
-  const options = await usergroupOptions(client);
-  const currentOption = program
-    ? options.find((o) => o.value === program.usergroup_id)
-    : undefined;
+  let currentOption: { text: { type: "plain_text"; text: string }; value: string } | undefined;
+  if (program) {
+    const result = await client.usergroups.list({});
+    const ug = (result.usergroups ?? []).find((u) => u.id === program.usergroup_id);
+    if (ug) {
+      currentOption = { text: { type: "plain_text", text: `${ug.name} (@${ug.handle})` }, value: ug.id! };
+    }
+  }
 
   return {
     type: "modal",
@@ -85,9 +94,9 @@ async function buildProgramModal(client: WebClient, program?: Program): Promise<
         block_id: "usergroup_block",
         label: { type: "plain_text", text: "Helper user group" },
         element: {
-          type: "static_select",
+          type: "external_select",
           action_id: "usergroup_input",
-          options,
+          min_query_length: 0,
           ...(currentOption && { initial_option: currentOption }),
         },
       },
@@ -257,6 +266,11 @@ function programSettingsModal(program: Program): ModalView {
 }
 
 export function registerProgramAdminModals(): void {
+  app.options("usergroup_input", async ({ ack, payload, client }) => {
+    const options = await usergroupOptions(client, payload.value);
+    await ack({ options });
+  });
+
   app.action("add_program", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
