@@ -94,8 +94,8 @@ function statsBoxText(
   hangTimeMinutes: number,
   extra?: string
 ): string {
-  const closedLine = extra ? `Closed: ${counts.closed}, ${extra}` : `Closed: ${counts.closed}`;
-  return `*${title}*\nTotal: ${counts.total}, Open: ${counts.open}, In Progress: ${counts.inProgress}, ${closedLine}\nHang time: ${Math.round(hangTimeMinutes)} minutes`;
+  const closedLine = extra ? `closed: ${counts.closed}, ${extra}` : `closed: ${counts.closed}`;
+  return `*${title}*\ntotal: ${counts.total}, open: ${counts.open}, in progress: ${counts.inProgress}, ${closedLine}\nhang time: ${Math.round(hangTimeMinutes)} minutes`;
 }
 
 function overviewBlocks(program: Program): KnownBlock[] {
@@ -115,16 +115,16 @@ function overviewBlocks(program: Program): KnownBlock[] {
     {
       type: "image",
       image_url: buildStatusPieChartUrl(allTime),
-      alt_text: "Ticket status breakdown",
+      alt_text: "ticket status breakdown",
     },
     { type: "divider" },
     {
       type: "section",
       fields: [
-        { type: "mrkdwn", text: statsBoxText("Total Tickets", allTime, allTimeHangTime) },
+        { type: "mrkdwn", text: statsBoxText("total tickets", allTime, allTimeHangTime) },
         {
           type: "mrkdwn",
-          text: statsBoxText("Past 24 Hours", last24h, last24hHangTime, `Closed Today: ${closedToday}`),
+          text: statsBoxText("past 24 hours", last24h, last24hHangTime, `closed today: ${closedToday}`),
         },
       ],
     },
@@ -132,8 +132,8 @@ function overviewBlocks(program: Program): KnownBlock[] {
     {
       type: "section",
       fields: [
-        { type: "mrkdwn", text: `*All-time leaderboard*\n${renderLeaderboard(allTimeBoard)}` },
-        { type: "mrkdwn", text: `*Past 24 hours*\n${renderLeaderboard(past24hBoard)}` },
+        { type: "mrkdwn", text: `*all-time leaderboard*\n${renderLeaderboard(allTimeBoard)}` },
+        { type: "mrkdwn", text: `*past 24 hours*\n${renderLeaderboard(past24hBoard)}` },
       ],
     },
   ];
@@ -188,7 +188,7 @@ function adminBlocks(): KnownBlock[] {
   const blocks: KnownBlock[] = [
     {
       type: "section",
-      text: { type: "mrkdwn", text: "*Programs*" },
+      text: { type: "mrkdwn", text: "*programs*" },
     },
   ];
 
@@ -254,8 +254,11 @@ export async function publishHomeView(
   // anyone who isn't a helper, which is fine, nothing sensitive in that.
   const allPrograms = listPrograms();
 
+  // Computed regardless of activeTab so the edit-program button next to the
+  // tab switcher stays put even while looking at the admin tab, instead of
+  // disappearing and reappearing as you switch tabs.
   let selectedProgram: Program | undefined;
-  if (activeTab !== "admin" && allPrograms.length > 0) {
+  if (allPrograms.length > 0) {
     const selectedId = programId ?? getSelectedProgramId(userId);
     selectedProgram = allPrograms.find((p) => p.id === selectedId) ?? allPrograms[0];
   }
@@ -263,7 +266,7 @@ export async function publishHomeView(
     !!selectedProgram && (admin || selectedProgram.admin_user_id === userId);
 
   const blocks: KnownBlock[] = [
-    { type: "header", text: { type: "plain_text", text: "Hestia", emoji: true } },
+    { type: "header", text: { type: "plain_text", text: "hestia", emoji: true } },
     tabSwitcherBlock(activeTab, admin, canEditSelected ? selectedProgram : undefined),
   ];
 
@@ -272,7 +275,7 @@ export async function publishHomeView(
   } else if (!selectedProgram) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "No programs configured yet." },
+      text: { type: "mrkdwn", text: "no programs configured yet." },
     });
   } else {
     if (allPrograms.length > 1) {

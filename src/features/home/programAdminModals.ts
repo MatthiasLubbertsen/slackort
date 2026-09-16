@@ -17,6 +17,7 @@ import {
   updateDefaultQuickReply,
 } from "../../db/defaultQuickReplies";
 import { publishHomeView } from "./publishHome";
+import { plainTextToRichTextBlock, richTextToMrkdwn } from "../../utils/richText";
 
 const PROGRAM_MODAL = "program_modal";
 const QUICK_REPLY_FORM_MODAL = "quick_reply_form_modal";
@@ -32,7 +33,6 @@ interface QuickReplyFormContext {
   programId?: number;
   quickReplyId?: number;
   rootViewId: string;
-  draft?: { label?: string; message?: string };
 }
 
 function isUniqueConstraintError(err: unknown): boolean {
@@ -51,7 +51,7 @@ function quickReplyRowsBlocks(
 ): KnownBlock[] {
   const blocks: KnownBlock[] = [
     { type: "divider" },
-    { type: "section", text: { type: "mrkdwn", text: "*Quick replies*" } },
+    { type: "section", text: { type: "mrkdwn", text: "*quick replies*" } },
   ];
 
   if (replies.length === 0) {
@@ -99,18 +99,18 @@ function buildProgramModal(program?: Program): ModalView {
     {
       type: "input",
       block_id: "name_block",
-      label: { type: "plain_text", text: "Program name" },
+      label: { type: "plain_text", text: "program name" },
       element: {
         type: "plain_text_input",
         action_id: "name_input",
         initial_value: program?.name,
-        placeholder: { type: "plain_text", text: "e.g. Hackatime" },
+        placeholder: { type: "plain_text", text: "e.g. hackatime" },
       },
     },
     {
       type: "input",
       block_id: "help_channel_block",
-      label: { type: "plain_text", text: "Help channel" },
+      label: { type: "plain_text", text: "help channel" },
       element: {
         type: "conversations_select",
         action_id: "help_channel_input",
@@ -121,10 +121,7 @@ function buildProgramModal(program?: Program): ModalView {
     {
       type: "input",
       block_id: "bts_channel_block",
-      label: {
-        type: "plain_text",
-        text: "BTS / helper channel (daily summaries post here, and anyone in it can claim, resolve, and manage tickets)",
-      },
+      label: { type: "plain_text", text: "bts / helper channel" },
       element: {
         type: "conversations_select",
         action_id: "bts_channel_input",
@@ -135,7 +132,7 @@ function buildProgramModal(program?: Program): ModalView {
     {
       type: "input",
       block_id: "admin_block",
-      label: { type: "plain_text", text: "Program admin (can edit everything here)" },
+      label: { type: "plain_text", text: "program admin (can edit everything here)" },
       element: {
         type: "users_select",
         action_id: "admin_input",
@@ -146,7 +143,7 @@ function buildProgramModal(program?: Program): ModalView {
       type: "input",
       block_id: "welcome_block",
       optional: true,
-      label: { type: "plain_text", text: "Welcome message (use {name} for the opener's name)" },
+      label: { type: "plain_text", text: "welcome message (use {name} for the opener's name)" },
       element: {
         type: "plain_text_input",
         action_id: "welcome_input",
@@ -158,7 +155,7 @@ function buildProgramModal(program?: Program): ModalView {
       type: "input",
       block_id: "faq_block",
       optional: true,
-      label: { type: "plain_text", text: "FAQ link" },
+      label: { type: "plain_text", text: "faq link" },
       element: {
         type: "plain_text_input",
         action_id: "faq_input",
@@ -171,7 +168,7 @@ function buildProgramModal(program?: Program): ModalView {
       optional: true,
       label: {
         type: "plain_text",
-        text: "Admin panel link (use {userId} for their Slack ID, {email} for their email if you've granted users:read.email)",
+        text: "admin panel link (use {userId} for their slack id, {email} for their email)",
       },
       element: {
         type: "plain_text_input",
@@ -205,14 +202,14 @@ function buildProgramModal(program?: Program): ModalView {
 function defaultQuickRepliesModal(): ModalView {
   return {
     type: "modal",
-    title: { type: "plain_text", text: "Default quick replies" },
+    title: { type: "plain_text", text: "default quick replies" },
     close: { type: "plain_text", text: "close" },
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "Copied onto every new Program when it's created. Editing this list never touches Programs that already exist, and a Program can freely edit or remove its own copy afterward.",
+          text: "copied onto every new program when it's created. editing this list never touches programs that already exist, and a program can freely edit or remove its own copy afterward.",
         },
       },
       ...quickReplyRowsBlocks(
@@ -231,9 +228,6 @@ function quickReplyFormModal(ctx: QuickReplyFormContext): ModalView {
       : getDefaultQuickReply(ctx.quickReplyId)
     : undefined;
 
-  const label = ctx.draft?.label ?? existing?.label ?? "";
-  const message = ctx.draft?.message ?? existing?.message ?? "";
-
   return {
     type: "modal",
     callback_id: QUICK_REPLY_FORM_MODAL,
@@ -250,35 +244,23 @@ function quickReplyFormModal(ctx: QuickReplyFormContext): ModalView {
       {
         type: "input",
         block_id: "label_block",
-        label: { type: "plain_text", text: "Button label" },
+        label: { type: "plain_text", text: "button label" },
         element: {
           type: "plain_text_input",
           action_id: "label_input",
-          initial_value: label,
+          initial_value: existing?.label ?? "",
           placeholder: { type: "plain_text", text: "e.g. fraud" },
         },
       },
       {
         type: "input",
         block_id: "message_block",
-        label: { type: "plain_text", text: "Message (posted as Hestia, never names who clicked it)" },
+        label: { type: "plain_text", text: "message (posted as hestia, never names who clicked it)" },
         element: {
-          type: "plain_text_input",
+          type: "rich_text_input",
           action_id: "message_input",
-          multiline: true,
-          initial_value: message,
+          ...(existing && { initial_value: plainTextToRichTextBlock(existing.message) }),
         },
-      },
-      {
-        type: "actions",
-        block_id: "mention_block",
-        elements: [
-          {
-            type: "users_select",
-            action_id: "quick_reply_mention_picker",
-            placeholder: { type: "plain_text", text: "ping a user or bot (optional)" },
-          },
-        ],
       },
     ],
   };
@@ -318,7 +300,7 @@ export function registerProgramAdminModals(): void {
     if (!name || !helpChannelId || !btsChannelId || !adminUserId) {
       await ack({
         response_action: "errors",
-        errors: { name_block: "All fields are required." },
+        errors: { name_block: "all fields are required." },
       });
       return;
     }
@@ -366,7 +348,7 @@ export function registerProgramAdminModals(): void {
       if (isUniqueConstraintError(err)) {
         await ack({
           response_action: "errors",
-          errors: { help_channel_block: "Another program already uses this help channel." },
+          errors: { help_channel_block: "another program already uses this help channel." },
         });
         return;
       }
@@ -461,26 +443,6 @@ export function registerProgramAdminModals(): void {
     await client.views.update({ view_id: body.view.id, view: buildProgramModal(program) });
   });
 
-  // Appends a mention to the message field without saving anything -- lets
-  // an admin ping a bot (or a person) without having to know its raw Slack
-  // ID, since plain_text_input has no @-mention autocomplete of its own.
-  app.action("quick_reply_mention_picker", async ({ ack, body, client, action }) => {
-    await ack();
-    if (action.type !== "users_select" || body.type !== "block_actions" || !body.view) return;
-
-    const ctx = JSON.parse(body.view.private_metadata || "{}") as QuickReplyFormContext;
-    const values = body.view.state.values;
-    const label = values.label_block?.label_input?.value ?? "";
-    const currentMessage = values.message_block?.message_input?.value ?? "";
-    const mention = `<@${action.selected_user}>`;
-    const message = currentMessage ? `${currentMessage} ${mention}` : mention;
-
-    await client.views.update({
-      view_id: body.view.id,
-      view: quickReplyFormModal({ ...ctx, draft: { label, message } }),
-    });
-  });
-
   app.view(QUICK_REPLY_FORM_MODAL, async ({ ack, view, client }) => {
     const { scope, programId, quickReplyId, rootViewId } = JSON.parse(
       view.private_metadata || "{}"
@@ -488,12 +450,13 @@ export function registerProgramAdminModals(): void {
 
     const values = view.state.values;
     const label = values.label_block.label_input.value ?? "";
-    const message = values.message_block.message_input.value ?? "";
+    const richText = values.message_block.message_input.rich_text_value;
+    const message = richText ? richTextToMrkdwn(richText) : "";
 
     if (!label || !message) {
       await ack({
         response_action: "errors",
-        errors: { label_block: "Label and message are both required." },
+        errors: { label_block: "label and message are both required." },
       });
       return;
     }
