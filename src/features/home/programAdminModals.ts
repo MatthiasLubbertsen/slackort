@@ -9,17 +9,17 @@ import {
   type Program,
 } from "../../db/programs";
 import {
-  addProgramShortcut,
-  deleteProgramShortcut,
-  getProgramShortcut,
-  listProgramShortcuts,
-  updateProgramShortcut,
-} from "../../db/programShortcuts";
+  addQuickReply,
+  deleteQuickReply,
+  getQuickReply,
+  listQuickReplies,
+  updateQuickReply,
+} from "../../db/quickReplies";
 import { publishHomeView } from "./publishHome";
 
 const PROGRAM_MODAL = "program_modal";
 const PROGRAM_SETTINGS_MODAL = "program_settings_modal";
-const SHORTCUT_FORM_MODAL = "shortcut_form_modal";
+const QUICK_REPLY_FORM_MODAL = "quick_reply_form_modal";
 
 function isUniqueConstraintError(err: unknown): boolean {
   return err instanceof Error && err.message.includes("UNIQUE constraint failed");
@@ -94,7 +94,7 @@ async function buildProgramModal(client: WebClient, program?: Program): Promise<
       {
         type: "input",
         block_id: "admin_block",
-        label: { type: "plain_text", text: "Program admin (can edit its messages and shortcuts)" },
+        label: { type: "plain_text", text: "Program admin (can edit its messages and quick replies)" },
         element: {
           type: "users_select",
           action_id: "admin_input",
@@ -105,31 +105,31 @@ async function buildProgramModal(client: WebClient, program?: Program): Promise<
   };
 }
 
-function shortcutsListView(program: Program): ModalView {
-  const shortcuts = listProgramShortcuts(program.id);
+function quickRepliesListView(program: Program): ModalView {
+  const quickReplies = listQuickReplies(program.id);
 
   const blocks: KnownBlock[] = [
     {
       type: "section",
-      text: { type: "mrkdwn", text: `Shortcuts for *${program.name}*, posts as Hestia, no ping.` },
+      text: { type: "mrkdwn", text: `Quick replies for *${program.name}*, posts as Hestia, no ping.` },
     },
     { type: "divider" },
   ];
 
-  if (shortcuts.length === 0) {
+  if (quickReplies.length === 0) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "_no shortcuts yet_" },
+      text: { type: "mrkdwn", text: "_no quick replies yet_" },
     });
   }
 
-  for (const shortcut of shortcuts) {
+  for (const reply of quickReplies) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: `*${shortcut.label}*\n${shortcut.message}` },
+      text: { type: "mrkdwn", text: `*${reply.label}*\n${reply.message}` },
       accessory: {
         type: "overflow",
-        action_id: `shortcut_row_actions:${shortcut.id}`,
+        action_id: `quick_reply_row_actions:${reply.id}`,
         options: [
           { text: { type: "plain_text", text: "edit" }, value: "edit" },
           { text: { type: "plain_text", text: "delete" }, value: "delete" },
@@ -145,8 +145,8 @@ function shortcutsListView(program: Program): ModalView {
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "add shortcut" },
-          action_id: `add_shortcut:${program.id}`,
+          text: { type: "plain_text", text: "add quick reply" },
+          action_id: `add_quick_reply:${program.id}`,
           value: String(program.id),
         },
       ],
@@ -155,20 +155,20 @@ function shortcutsListView(program: Program): ModalView {
 
   return {
     type: "modal",
-    title: { type: "plain_text", text: "Shortcuts" },
+    title: { type: "plain_text", text: "Quick replies" },
     close: { type: "plain_text", text: "close" },
     blocks,
   };
 }
 
-function shortcutFormModal(programId: number, shortcutId?: number): ModalView {
-  const shortcut = shortcutId ? getProgramShortcut(shortcutId) : undefined;
+function quickReplyFormModal(programId: number, quickReplyId?: number): ModalView {
+  const reply = quickReplyId ? getQuickReply(quickReplyId) : undefined;
 
   return {
     type: "modal",
-    callback_id: SHORTCUT_FORM_MODAL,
-    private_metadata: JSON.stringify({ programId, shortcutId }),
-    title: { type: "plain_text", text: shortcut ? "edit shortcut" : "add shortcut" },
+    callback_id: QUICK_REPLY_FORM_MODAL,
+    private_metadata: JSON.stringify({ programId, quickReplyId }),
+    title: { type: "plain_text", text: reply ? "edit quick reply" : "add quick reply" },
     submit: { type: "plain_text", text: "save" },
     close: { type: "plain_text", text: "cancel" },
     blocks: [
@@ -179,7 +179,7 @@ function shortcutFormModal(programId: number, shortcutId?: number): ModalView {
         element: {
           type: "plain_text_input",
           action_id: "label_input",
-          initial_value: shortcut?.label,
+          initial_value: reply?.label,
           placeholder: { type: "plain_text", text: "e.g. fraud" },
         },
       },
@@ -191,7 +191,7 @@ function shortcutFormModal(programId: number, shortcutId?: number): ModalView {
           type: "plain_text_input",
           action_id: "message_input",
           multiline: true,
-          initial_value: shortcut?.message,
+          initial_value: reply?.message,
         },
       },
     ],
@@ -246,8 +246,8 @@ function programSettingsModal(program: Program): ModalView {
         elements: [
           {
             type: "button",
-            text: { type: "plain_text", text: "manage shortcuts" },
-            action_id: `manage_shortcuts:${program.id}`,
+            text: { type: "plain_text", text: "manage quick replies" },
+            action_id: `manage_quick_replies:${program.id}`,
             value: String(program.id),
           },
         ],
@@ -372,7 +372,7 @@ export function registerProgramAdminModals(): void {
     await publishHomeView(body.user.id, "overview");
   });
 
-  app.action(/^manage_shortcuts:/, async ({ ack, body, client, action }) => {
+  app.action(/^manage_quick_replies:/, async ({ ack, body, client, action }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
     if (action.type !== "button") return;
@@ -383,11 +383,11 @@ export function registerProgramAdminModals(): void {
 
     await client.views.push({
       trigger_id: body.trigger_id,
-      view: shortcutsListView(program),
+      view: quickRepliesListView(program),
     });
   });
 
-  app.action(/^add_shortcut:/, async ({ ack, body, client, action }) => {
+  app.action(/^add_quick_reply:/, async ({ ack, body, client, action }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
     if (action.type !== "button") return;
@@ -399,42 +399,42 @@ export function registerProgramAdminModals(): void {
 
     await client.views.push({
       trigger_id: body.trigger_id,
-      view: shortcutFormModal(programId),
+      view: quickReplyFormModal(programId),
     });
   });
 
-  app.action(/^shortcut_row_actions:/, async ({ ack, body, client, action }) => {
+  app.action(/^quick_reply_row_actions:/, async ({ ack, body, client, action }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id || !body.view) return;
     if (action.type !== "overflow") return;
 
-    const shortcutId = Number(action.action_id.slice("shortcut_row_actions:".length));
-    const shortcut = getProgramShortcut(shortcutId);
-    if (!shortcut) return;
-    const program = getProgramById(shortcut.program_id);
+    const quickReplyId = Number(action.action_id.slice("quick_reply_row_actions:".length));
+    const reply = getQuickReply(quickReplyId);
+    if (!reply) return;
+    const program = getProgramById(reply.program_id);
     if (!program) return;
     if (program.admin_user_id !== body.user.id && !isSuperAdmin(body.user.id)) return;
 
     if (action.selected_option.value === "edit") {
       await client.views.push({
         trigger_id: body.trigger_id,
-        view: shortcutFormModal(program.id, shortcutId),
+        view: quickReplyFormModal(program.id, quickReplyId),
       });
       return;
     }
 
     // delete
-    deleteProgramShortcut(shortcutId);
+    deleteQuickReply(quickReplyId);
     await client.views.update({
       view_id: body.view.id,
-      view: shortcutsListView(program),
+      view: quickRepliesListView(program),
     });
   });
 
-  app.view(SHORTCUT_FORM_MODAL, async ({ ack, view }) => {
-    const { programId, shortcutId } = JSON.parse(view.private_metadata || "{}") as {
+  app.view(QUICK_REPLY_FORM_MODAL, async ({ ack, view }) => {
+    const { programId, quickReplyId } = JSON.parse(view.private_metadata || "{}") as {
       programId: number;
-      shortcutId?: number;
+      quickReplyId?: number;
     };
     const program = getProgramById(programId);
     if (!program) {
@@ -454,16 +454,16 @@ export function registerProgramAdminModals(): void {
       return;
     }
 
-    if (shortcutId) {
-      updateProgramShortcut(shortcutId, { label, message });
+    if (quickReplyId) {
+      updateQuickReply(quickReplyId, { label, message });
     } else {
-      addProgramShortcut(programId, label, message);
+      addQuickReply(programId, label, message);
     }
 
-    // Pop back to the shortcuts list, refreshed, instead of just closing.
+    // Pop back to the quick replies list, refreshed, instead of just closing.
     await ack({
       response_action: "update",
-      view: shortcutsListView(program),
+      view: quickRepliesListView(program),
     });
   });
 }

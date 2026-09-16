@@ -43,8 +43,21 @@ db.exec(`
     admin_url_template TEXT,
     created_at INTEGER NOT NULL
   );
+`);
 
-  CREATE TABLE IF NOT EXISTS program_shortcuts (
+function tableExists(name: string): boolean {
+  return !!db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name);
+}
+
+// program_shortcuts was renamed to quick_replies before this ever shipped
+// widely -- carry over any rows from a brief earlier deploy instead of
+// losing them.
+if (tableExists("program_shortcuts") && !tableExists("quick_replies")) {
+  db.exec(`ALTER TABLE program_shortcuts RENAME TO quick_replies`);
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS quick_replies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
     key TEXT NOT NULL,
@@ -53,7 +66,7 @@ db.exec(`
     position INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE INDEX IF NOT EXISTS idx_program_shortcuts_program_id ON program_shortcuts(program_id);
+  CREATE INDEX IF NOT EXISTS idx_quick_replies_program_id ON quick_replies(program_id);
 `);
 
 function ensureColumn(table: string, column: string, columnDdl: string): void {

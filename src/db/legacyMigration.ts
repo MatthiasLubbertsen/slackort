@@ -1,6 +1,6 @@
 import { config } from "../config";
 import { createProgram, listPrograms } from "./programs";
-import { addProgramShortcut } from "./programShortcuts";
+import { addQuickReply } from "./quickReplies";
 import { backfillProgramId } from "./tickets";
 
 /**
@@ -32,12 +32,12 @@ function createLegacyProgramIfNeeded(): void {
     adminUrlTemplate: stardanceAdminUrl ?? null,
   });
 
-  addProgramShortcut(
+  addQuickReply(
     program.id,
     "fraud",
     "Hi, please keep your fraud related questions with <@U091HC53CE8>. It's better for us all!"
   );
-  addProgramShortcut(
+  addQuickReply(
     program.id,
     "hackatime",
     "Hi, would you mind redirecting your Hackatime questions to letterbird.co/hackatime?"

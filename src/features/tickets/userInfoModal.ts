@@ -10,7 +10,7 @@ import {
 } from "../../db/tickets";
 import type { Ticket } from "../../db/tickets";
 import { getProgramById, type Program } from "../../db/programs";
-import { listProgramShortcuts, findProgramShortcutByKey } from "../../db/programShortcuts";
+import { listQuickReplies, findQuickReplyByKey } from "../../db/quickReplies";
 import { app } from "../../slack/app";
 import { isUsergroupMember } from "../../slack/helpers";
 import { getFriendlyName } from "../../slack/userName";
@@ -58,7 +58,7 @@ async function infoModalView(client: WebClient, ticket: Ticket, program: Program
       ? `Assigned to <@${ticket.assigned_to}>. Reply in the thread, or take over below.`
       : `Unclaimed, whoever replies in the thread first gets it, or claim it below.`;
 
-    const shortcuts = listProgramShortcuts(program.id);
+    const quickReplies = listQuickReplies(program.id);
 
     blocks.push(
       { type: "divider" },
@@ -75,15 +75,15 @@ async function infoModalView(client: WebClient, ticket: Ticket, program: Program
       { type: "divider" },
       {
         type: "section",
-        text: { type: "mrkdwn", text: "*Quick close*, posts as Hestia, no ping." },
+        text: { type: "mrkdwn", text: "*Quick replies*, posts as Hestia, no ping." },
       },
       {
         type: "actions",
         elements: [
-          ...shortcuts.map((shortcut) => ({
+          ...quickReplies.map((reply) => ({
             type: "button" as const,
-            text: { type: "plain_text" as const, text: shortcut.label },
-            action_id: `close_with_reason:${shortcut.key}`,
+            text: { type: "plain_text" as const, text: reply.label },
+            action_id: `close_with_reason:${reply.key}`,
             value: String(ticket.id),
           })),
           {
@@ -182,8 +182,8 @@ export function registerUserInfoModal(): void {
     if (!ticket) return;
     const program = getProgramById(ticket.program_id);
     if (!program) return;
-    const shortcut = findProgramShortcutByKey(program.id, reasonKey);
-    if (!shortcut) return;
+    const reply = findQuickReplyByKey(program.id, reasonKey);
+    if (!reply) return;
 
     if (!(await isUsergroupMember(body.user.id, program.usergroup_id))) return;
 
@@ -195,7 +195,7 @@ export function registerUserInfoModal(): void {
       return;
     }
 
-    const updated = resolveTicket(ticket.id, body.user.id, shortcut.message);
+    const updated = resolveTicket(ticket.id, body.user.id, reply.message);
 
     if (updated.reply_ts) {
       const openerName = await getFriendlyName(client, updated.opener_id);
@@ -210,7 +210,7 @@ export function registerUserInfoModal(): void {
     const announcement = await client.chat.postMessage({
       channel: updated.channel_id,
       thread_ts: updated.message_ts,
-      text: shortcut.message,
+      text: reply.message,
       blocks: buildResolvedAnnouncementBlocks(updated, { withReopenButton: false }),
     });
     setResolutionTs(updated.id, announcement.ts as string);

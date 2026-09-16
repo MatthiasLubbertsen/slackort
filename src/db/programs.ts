@@ -1,6 +1,5 @@
 import { db } from "./index";
 import { config } from "../config";
-import { isUsergroupMember } from "../slack/helpers";
 
 export interface Program {
   id: number;
@@ -105,17 +104,4 @@ export function getProgramByHelpChannel(channelId: string): Program | undefined 
 
 export function listPrograms(): Program[] {
   return db.prepare(`SELECT * FROM programs ORDER BY name ASC`).all() as Program[];
-}
-
-export function isProgramHelper(userId: string, program: Program): Promise<boolean> {
-  return isUsergroupMember(userId, program.usergroup_id);
-}
-
-/** Programs a user can see on the Home tab: every one if they're a super admin, otherwise just the ones they help with. */
-export async function programsVisibleTo(userId: string): Promise<Program[]> {
-  const all = listPrograms();
-  if (isSuperAdmin(userId)) return all;
-
-  const flags = await Promise.all(all.map((p) => isProgramHelper(userId, p)));
-  return all.filter((_, i) => flags[i]);
 }

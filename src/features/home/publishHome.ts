@@ -15,7 +15,7 @@ import {
   setSelectedProgramId,
   type HomeTab,
 } from "../../db/homeTabPrefs";
-import { isSuperAdmin, listPrograms, programsVisibleTo, type Program } from "../../db/programs";
+import { isSuperAdmin, listPrograms, type Program } from "../../db/programs";
 import { buildStatusPieChartUrl } from "./statusChart";
 import { relativeTimeAgo } from "../../utils/relativeTime";
 
@@ -251,7 +251,10 @@ export async function publishHomeView(
   if (tab) setHomeTabPref(userId, tab);
   if (programId) setSelectedProgramId(userId, programId);
 
-  const visiblePrograms = await programsVisibleTo(userId);
+  // Stats are public: every workspace member sees every Program here, not
+  // just the ones they help with. "My tickets" naturally comes up empty for
+  // anyone who isn't a helper, which is fine, nothing sensitive in that.
+  const allPrograms = listPrograms();
   const blocks: KnownBlock[] = [
     { type: "header", text: { type: "plain_text", text: "Hestia", emoji: true } },
     tabSwitcherBlock(activeTab, admin),
@@ -259,21 +262,17 @@ export async function publishHomeView(
 
   if (activeTab === "admin") {
     blocks.push(...adminBlocks());
-  } else if (visiblePrograms.length === 0) {
+  } else if (allPrograms.length === 0) {
     blocks.push({
       type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "You're not helping with any programs yet. Ask a super admin to add you to one.",
-      },
+      text: { type: "mrkdwn", text: "No programs configured yet." },
     });
   } else {
     const selectedId = programId ?? getSelectedProgramId(userId);
-    const program =
-      visiblePrograms.find((p) => p.id === selectedId) ?? visiblePrograms[0];
+    const program = allPrograms.find((p) => p.id === selectedId) ?? allPrograms[0];
 
-    if (visiblePrograms.length > 1) {
-      blocks.push(programPickerBlock(visiblePrograms, program));
+    if (allPrograms.length > 1) {
+      blocks.push(programPickerBlock(allPrograms, program));
     }
 
     blocks.push(

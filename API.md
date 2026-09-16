@@ -95,7 +95,7 @@ Paginated ticket list.
 }
 ```
 
-`category` is `open` (unclaimed), `in_progress` (claimed, not yet resolved), or `closed` (resolved) -- the same three-state view used everywhere else in Hestia, derived from `status` + `assignedTo`. `resolutionNote` is only set when the ticket was closed with one of a Program's canned quick-close shortcuts instead of the plain "resolved by X" flow; it's the exact text posted, and it's `null` otherwise. Pass `names=true` to also get `openerName`, `resolvedByName`, `assignedToName`.
+`category` is `open` (unclaimed), `in_progress` (claimed, not yet resolved), or `closed` (resolved) -- the same three-state view used everywhere else in Hestia, derived from `status` + `assignedTo`. `resolutionNote` is only set when the ticket was closed with one of a Program's canned quick replies instead of the plain "resolved by X" flow; it's the exact text posted, and it's `null` otherwise. Pass `names=true` to also get `openerName`, `resolvedByName`, `assignedToName`.
 
 ## `GET /api/tickets/:id`
 
@@ -145,4 +145,4 @@ Just the leaderboard rows for one Program. `programId` is required; `range` defa
 
 - IDs throughout (`openerId`, `resolvedBy`, `assignedTo`, `resolved_by`) are raw Slack user IDs (`U...`). Pass `names=true` where offered, or hit `/api/tickets/:id`, to get a display name resolved alongside it.
 - Timestamps (`createdAt`, `resolvedAt`) are Unix milliseconds. `messageTs` is Slack's own message timestamp format (seconds, with a decimal fraction), not milliseconds.
-- There's a human-facing version of the same overview data, with a Program switcher, at whatever `WEB_PORT` (default `7777`) is exposed as, e.g. `https://hestia.matthiaz.dev`.
+- The same overview data (pie chart, stat boxes, leaderboard), with a Program switcher, is also on the Slack Home tab, public to the whole workspace, not gated to helpers of that Program.
