@@ -8,8 +8,14 @@ import {
   ticketCategoryCounts,
   type LeaderboardRow,
 } from "../../db/tickets";
-import { getHomeTabPref, setHomeTabPref, type HomeTab } from "../../db/homeTabPrefs";
-import { isHelper } from "../../slack/helpers";
+import {
+  getHomeTabPref,
+  getSelectedProgramId,
+  setHomeTabPref,
+  setSelectedProgramId,
+  type HomeTab,
+} from "../../db/homeTabPrefs";
+import { isSuperAdmin, listPrograms, programsVisibleTo, type Program } from "../../db/programs";
 import { buildStatusPieChartUrl } from "./statusChart";
 import { relativeTimeAgo } from "../../utils/relativeTime";
 
@@ -20,7 +26,7 @@ function renderLeaderboard(rows: LeaderboardRow[]): string {
   return rows.map((row, i) => `${i + 1}. <@${row.resolved_by}>, ${row.count} resolved`).join("\n");
 }
 
-function tabSwitcherBlock(activeTab: HomeTab): KnownBlock {
+function tabSwitcherBlock(activeTab: HomeTab, admin: boolean): KnownBlock {
   return {
     type: "actions",
     block_id: "home_tabs",
@@ -37,6 +43,37 @@ function tabSwitcherBlock(activeTab: HomeTab): KnownBlock {
         action_id: "home_tab_mine",
         style: activeTab === "mine" ? "primary" : undefined,
       },
+      ...(admin
+        ? [
+            {
+              type: "button" as const,
+              text: { type: "plain_text" as const, text: "admin" },
+              action_id: "home_tab_admin",
+              style: activeTab === "admin" ? ("primary" as const) : undefined,
+            },
+          ]
+        : []),
+    ],
+  } as KnownBlock;
+}
+
+function programPickerBlock(programs: Program[], selected: Program): KnownBlock {
+  return {
+    type: "actions",
+    block_id: "program_picker",
+    elements: [
+      {
+        type: "static_select",
+        action_id: "select_program",
+        initial_option: {
+          text: { type: "plain_text", text: selected.name },
+          value: String(selected.id),
+        },
+        options: programs.map((p) => ({
+          text: { type: "plain_text", text: p.name },
+          value: String(p.id),
+        })),
+      },
     ],
   };
 }
@@ -51,19 +88,19 @@ function statsBoxText(
   return `*${title}*\nTotal: ${counts.total}, Open: ${counts.open}, In Progress: ${counts.inProgress}, ${closedLine}\nHang time: ${Math.round(hangTimeMinutes)} minutes`;
 }
 
-async function overviewBlocks(): Promise<KnownBlock[]> {
-  const allTime = ticketCategoryCounts();
+function overviewBlocks(program: Program, userId: string): KnownBlock[] {
+  const allTime = ticketCategoryCounts(program.id);
   const dayStart = Date.now() - ONE_DAY_MS;
-  const last24h = ticketCategoryCounts(dayStart);
-  const closedToday = closedCountSince(dayStart);
+  const last24h = ticketCategoryCounts(program.id, dayStart);
+  const closedToday = closedCountSince(program.id, dayStart);
 
-  const allTimeHangTime = averageHangTimeMinutes();
-  const last24hHangTime = averageHangTimeMinutes(dayStart);
+  const allTimeHangTime = averageHangTimeMinutes(program.id);
+  const last24hHangTime = averageHangTimeMinutes(program.id, dayStart);
 
-  const past24hBoard = leaderboard(dayStart);
-  const allTimeBoard = leaderboard();
+  const past24hBoard = leaderboard(program.id, dayStart);
+  const allTimeBoard = leaderboard(program.id);
 
-  return [
+  const blocks: KnownBlock[] = [
     { type: "divider" },
     {
       type: "image",
@@ -90,13 +127,31 @@ async function overviewBlocks(): Promise<KnownBlock[]> {
       ],
     },
   ];
+
+  if (program.admin_user_id === userId || isSuperAdmin(userId)) {
+    blocks.push(
+      { type: "divider" },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "program settings" },
+            action_id: `program_settings:${program.id}`,
+            value: String(program.id),
+          },
+        ],
+      }
+    );
+  }
+
+  return blocks;
 }
 
-async function mineBlocks(userId: string): Promise<KnownBlock[]> {
-  const helper = await isHelper(userId);
-  const assigned = helper ? getTicketsAssignedTo(userId) : [];
+async function mineBlocks(userId: string, program: Program): Promise<KnownBlock[]> {
+  const assigned = getTicketsAssignedTo(userId, program.id);
 
-  if (!helper || assigned.length === 0) {
+  if (assigned.length === 0) {
     return [
       {
         type: "section",
@@ -134,15 +189,99 @@ async function mineBlocks(userId: string): Promise<KnownBlock[]> {
   return blocks;
 }
 
-export async function publishHomeView(userId: string, tab?: HomeTab): Promise<void> {
-  const activeTab = tab ?? getHomeTabPref(userId);
-  if (tab) setHomeTabPref(userId, tab);
+function adminBlocks(): KnownBlock[] {
+  const programs = listPrograms();
 
   const blocks: KnownBlock[] = [
-    { type: "header", text: { type: "plain_text", text: "Hestia", emoji: true } },
-    tabSwitcherBlock(activeTab),
-    ...(activeTab === "overview" ? await overviewBlocks() : await mineBlocks(userId)),
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: "*Programs*" },
+    },
   ];
+
+  if (programs.length === 0) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "_no programs yet_" },
+    });
+  }
+
+  for (const program of programs) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*${program.name}*\n<#${program.help_channel_id}> / <#${program.bts_channel_id}>, admin <@${program.admin_user_id}>`,
+      },
+      accessory: {
+        type: "button",
+        text: { type: "plain_text", text: "edit" },
+        action_id: `edit_program:${program.id}`,
+        value: String(program.id),
+      },
+    });
+  }
+
+  blocks.push(
+    { type: "divider" },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "add program" },
+          action_id: "add_program",
+          style: "primary",
+        },
+      ],
+    }
+  );
+
+  return blocks;
+}
+
+export async function publishHomeView(
+  userId: string,
+  tab?: HomeTab,
+  programId?: number
+): Promise<void> {
+  const admin = isSuperAdmin(userId);
+  let activeTab = tab ?? getHomeTabPref(userId);
+  if (activeTab === "admin" && !admin) activeTab = "overview";
+  if (tab) setHomeTabPref(userId, tab);
+  if (programId) setSelectedProgramId(userId, programId);
+
+  const visiblePrograms = await programsVisibleTo(userId);
+  const blocks: KnownBlock[] = [
+    { type: "header", text: { type: "plain_text", text: "Hestia", emoji: true } },
+    tabSwitcherBlock(activeTab, admin),
+  ];
+
+  if (activeTab === "admin") {
+    blocks.push(...adminBlocks());
+  } else if (visiblePrograms.length === 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "You're not helping with any programs yet. Ask a super admin to add you to one.",
+      },
+    });
+  } else {
+    const selectedId = programId ?? getSelectedProgramId(userId);
+    const program =
+      visiblePrograms.find((p) => p.id === selectedId) ?? visiblePrograms[0];
+
+    if (visiblePrograms.length > 1) {
+      blocks.push(programPickerBlock(visiblePrograms, program));
+    }
+
+    blocks.push(
+      ...(activeTab === "overview"
+        ? overviewBlocks(program, userId)
+        : await mineBlocks(userId, program))
+    );
+  }
 
   await app.client.views.publish({
     user_id: userId,
@@ -164,6 +303,18 @@ export function registerHome(): void {
   app.action("home_tab_mine", async ({ ack, body }) => {
     await ack();
     await publishHomeView(body.user.id, "mine");
+  });
+
+  app.action("home_tab_admin", async ({ ack, body }) => {
+    await ack();
+    if (!isSuperAdmin(body.user.id)) return;
+    await publishHomeView(body.user.id, "admin");
+  });
+
+  app.action("select_program", async ({ ack, body, action }) => {
+    await ack();
+    if (action.type !== "static_select") return;
+    await publishHomeView(body.user.id, undefined, Number(action.selected_option.value));
   });
 
   // Buttons with a `url` still fire an interaction payload -- just ack it, Slack opens the link itself.

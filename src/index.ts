@@ -5,15 +5,20 @@ import { registerResolveTicket } from "./features/tickets/resolveTicket";
 import { registerUserInfoModal } from "./features/tickets/userInfoModal";
 import { registerAssignShortcut } from "./features/tickets/assignShortcut";
 import { registerHome } from "./features/home/publishHome";
+import { registerProgramAdminModals } from "./features/home/programAdminModals";
 import { registerDailySummary } from "./features/summary/dailySummary";
 import { registerApiServer } from "./api/server";
 import { registerWebServer } from "./web/server";
+import { migrateLegacyProgram } from "./db/legacyMigration";
+
+migrateLegacyProgram();
 
 registerCreateTicketFromMessage();
 registerResolveTicket();
 registerUserInfoModal();
 registerAssignShortcut();
 registerHome();
+registerProgramAdminModals();
 registerDailySummary();
 registerApiServer();
 registerWebServer();

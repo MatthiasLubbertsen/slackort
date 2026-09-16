@@ -1,6 +1,6 @@
 display_information:
   name: Hestia
-  description: Slack-native support ticketing -- FAQ canvas, one-click resolve, daily summaries, helper leaderboard.
+  description: Slack-native support ticketing for many channels at once -- FAQ links, one-click resolve, daily summaries, helper leaderboards, all managed from the Home tab.
   background_color: "#2c2d30"
 features:
   bot_user:

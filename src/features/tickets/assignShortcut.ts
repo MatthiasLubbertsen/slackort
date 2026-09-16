@@ -1,6 +1,7 @@
 import { app } from "../../slack/app";
 import { claimTicket, getTicketByMessageTs } from "../../db/tickets";
-import { isHelper } from "../../slack/helpers";
+import { getProgramById } from "../../db/programs";
+import { isUsergroupMember } from "../../slack/helpers";
 
 const ASSIGN_RESPONSES = [
   "assigned to you! go get 'em.",
@@ -34,7 +35,10 @@ export function registerAssignShortcut(): void {
       return;
     }
 
-    if (!(await isHelper(shortcut.user.id))) {
+    const program = getProgramById(ticket.program_id);
+    if (!program) return;
+
+    if (!(await isUsergroupMember(shortcut.user.id, program.usergroup_id))) {
       await client.chat.postEphemeral({
         channel: channelId,
         thread_ts: ticket.message_ts,

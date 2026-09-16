@@ -6,6 +6,7 @@ import {
   ticketsOpenedBetween,
   ticketsResolvedBetween,
 } from "../../db/tickets";
+import { listPrograms, type Program } from "../../db/programs";
 
 function startOfDay(offsetDays = 0): number {
   const d = new Date();
@@ -22,13 +23,13 @@ function formatDuration(ms: number): string {
   return `${hours}h ${rest}m`;
 }
 
-export async function postDailySummary(): Promise<void> {
+async function postDailySummaryForProgram(program: Program): Promise<void> {
   const dayStart = startOfDay(-1);
   const dayEnd = startOfDay(0);
 
-  const opened = ticketsOpenedBetween(dayStart, dayEnd);
-  const resolved = ticketsResolvedBetween(dayStart, dayEnd);
-  const stillOpen = openTicketsCreatedBefore(dayEnd);
+  const opened = ticketsOpenedBetween(program.id, dayStart, dayEnd);
+  const resolved = ticketsResolvedBetween(program.id, dayStart, dayEnd);
+  const stillOpen = openTicketsCreatedBefore(program.id, dayEnd);
 
   const avgResolutionMs =
     resolved.length > 0
@@ -56,12 +57,12 @@ export async function postDailySummary(): Promise<void> {
   const oldestOpen = oldestOpenLines.join("\n");
 
   await app.client.chat.postMessage({
-    channel: config.summaryChannelId,
-    text: "Daily support summary",
+    channel: program.bts_channel_id,
+    text: `Daily support summary for ${program.name}`,
     blocks: [
       {
         type: "header",
-        text: { type: "plain_text", text: "📊 Daily support summary", emoji: true },
+        text: { type: "plain_text", text: `Daily support summary: ${program.name}`, emoji: true },
       },
       {
         type: "section",
@@ -80,10 +81,20 @@ export async function postDailySummary(): Promise<void> {
   });
 }
 
+export async function postDailySummary(): Promise<void> {
+  for (const program of listPrograms()) {
+    await postDailySummaryForProgram(program);
+  }
+}
+
 export function registerDailySummary(): void {
-  cron.schedule(config.dailySummaryCron, () => {
-    postDailySummary().catch((err) => {
-      console.error("Failed to post daily summary", err);
-    });
-  }, { timezone: config.timezone });
+  cron.schedule(
+    config.dailySummaryCron,
+    () => {
+      postDailySummary().catch((err) => {
+        console.error("Failed to post daily summary", err);
+      });
+    },
+    { timezone: config.timezone }
+  );
 }

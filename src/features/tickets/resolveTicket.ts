@@ -1,5 +1,6 @@
 import { app } from "../../slack/app";
 import { getTicketById, resolveTicket, reopenTicket, setResolutionTs } from "../../db/tickets";
+import { getProgramById } from "../../db/programs";
 import { canResolve } from "../../slack/helpers";
 import { getFriendlyName } from "../../slack/userName";
 import {
@@ -18,6 +19,8 @@ export function registerResolveTicket(): void {
     const ticketId = Number(action.value);
     const ticket = getTicketById(ticketId);
     if (!ticket) return;
+    const program = getProgramById(ticket.program_id);
+    if (!program) return;
 
     if (ticket.status === "resolved") {
       await client.chat.postEphemeral({
@@ -29,7 +32,7 @@ export function registerResolveTicket(): void {
       return;
     }
 
-    const allowed = await canResolve(body.user.id, ticket.opener_id);
+    const allowed = await canResolve(body.user.id, ticket.opener_id, program.usergroup_id);
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
@@ -49,7 +52,7 @@ export function registerResolveTicket(): void {
         channel: updated.channel_id,
         ts: updated.reply_ts,
         text: `Hey ${openerName}, a helper will be along shortly.`,
-        blocks: buildTicketIntroBlocks(updated, openerName),
+        blocks: buildTicketIntroBlocks(updated, program, openerName),
       });
     }
 
@@ -88,6 +91,8 @@ export function registerResolveTicket(): void {
     const ticketId = Number(action.value);
     const ticket = getTicketById(ticketId);
     if (!ticket) return;
+    const program = getProgramById(ticket.program_id);
+    if (!program) return;
 
     if (ticket.status === "open") {
       await client.chat.postEphemeral({
@@ -100,7 +105,7 @@ export function registerResolveTicket(): void {
     }
 
     // Opener or helper, same as resolving.
-    const allowed = await canResolve(body.user.id, ticket.opener_id);
+    const allowed = await canResolve(body.user.id, ticket.opener_id, program.usergroup_id);
     if (!allowed) {
       await client.chat.postEphemeral({
         channel: body.channel.id!,
@@ -134,7 +139,7 @@ export function registerResolveTicket(): void {
         channel: updated.channel_id,
         ts: updated.reply_ts,
         text: `Hey ${openerName}, a helper will be along shortly.`,
-        blocks: buildTicketIntroBlocks(updated, openerName),
+        blocks: buildTicketIntroBlocks(updated, program, openerName),
       });
     }
 

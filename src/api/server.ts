@@ -13,6 +13,7 @@ import {
   type Ticket,
   type TicketStatus,
 } from "../db/tickets";
+import { getProgramById, listPrograms } from "../db/programs";
 import { getFriendlyName } from "../slack/userName";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,12 +27,23 @@ function parsePagination(query: express.Request["query"]) {
   return { limit, offset };
 }
 
+/** Every program-scoped endpoint needs a valid ?programId=, this resolves it or writes the 400 itself. */
+function requireProgramId(req: express.Request, res: express.Response): number | undefined {
+  const programId = Number(req.query.programId);
+  if (!programId || !getProgramById(programId)) {
+    res.status(400).json({ error: "valid programId query param required, see /api/programs" });
+    return undefined;
+  }
+  return programId;
+}
+
 async function serializeTicket(
   ticket: Ticket,
   opts: { names?: boolean; permalink?: boolean } = {}
 ) {
   const base = {
     id: ticket.id,
+    programId: ticket.program_id,
     channelId: ticket.channel_id,
     messageTs: ticket.message_ts,
     openerId: ticket.opener_id,
@@ -67,24 +79,24 @@ async function serializeTicket(
   return { ...base, ...extra };
 }
 
-function overviewPayload() {
-  const allTime = ticketCategoryCounts();
-  const last24h = ticketCategoryCounts(Date.now() - ONE_DAY_MS);
+function overviewPayload(programId: number) {
+  const allTime = ticketCategoryCounts(programId);
+  const last24h = ticketCategoryCounts(programId, Date.now() - ONE_DAY_MS);
 
   return {
     allTime: {
       ...allTime,
-      hangTimeMinutes: Math.round(averageHangTimeMinutes()),
+      hangTimeMinutes: Math.round(averageHangTimeMinutes(programId)),
     },
     past24h: {
       ...last24h,
-      closedToday: closedCountSince(Date.now() - ONE_DAY_MS),
-      hangTimeMinutes: Math.round(averageHangTimeMinutes(Date.now() - ONE_DAY_MS)),
+      closedToday: closedCountSince(programId, Date.now() - ONE_DAY_MS),
+      hangTimeMinutes: Math.round(averageHangTimeMinutes(programId, Date.now() - ONE_DAY_MS)),
     },
     leaderboard: {
-      past24h: leaderboard(Date.now() - ONE_DAY_MS),
-      weekly: leaderboard(Date.now() - ONE_WEEK_MS),
-      allTime: leaderboard(),
+      past24h: leaderboard(programId, Date.now() - ONE_DAY_MS),
+      weekly: leaderboard(programId, Date.now() - ONE_WEEK_MS),
+      allTime: leaderboard(programId),
     },
   };
 }
@@ -107,8 +119,21 @@ export function registerApiServer(): void {
     res.json({ ok: true });
   });
 
-  api.get("/api/overview", (_req, res) => {
-    res.json(overviewPayload());
+  api.get("/api/programs", (_req, res) => {
+    res.json({
+      programs: listPrograms().map((p) => ({
+        id: p.id,
+        name: p.name,
+        helpChannelId: p.help_channel_id,
+        btsChannelId: p.bts_channel_id,
+      })),
+    });
+  });
+
+  api.get("/api/overview", (req, res) => {
+    const programId = requireProgramId(req, res);
+    if (!programId) return;
+    res.json(overviewPayload(programId));
   });
 
   api.get("/api/tickets", async (req, res) => {
@@ -119,8 +144,9 @@ export function registerApiServer(): void {
         ? (statusParam as TicketStatus)
         : undefined;
     const withNames = req.query.names === "true";
+    const programId = req.query.programId ? Number(req.query.programId) : undefined;
 
-    const { tickets, total } = listTickets({ status, limit, offset });
+    const { tickets, total } = listTickets({ programId, status, limit, offset });
     const serialized = await Promise.all(tickets.map((t) => serializeTicket(t, { names: withNames })));
     res.json({ tickets: serialized, total, limit, offset });
   });
@@ -136,12 +162,16 @@ export function registerApiServer(): void {
   });
 
   api.get("/api/users/:userId/stats", (req, res) => {
-    res.json(ticketStatsForUser(req.params.userId));
+    const programId = requireProgramId(req, res);
+    if (!programId) return;
+    res.json(ticketStatsForUser(req.params.userId, programId));
   });
 
   api.get("/api/leaderboard", (req, res) => {
+    const programId = requireProgramId(req, res);
+    if (!programId) return;
     const range = req.query.range === "week" ? Date.now() - ONE_WEEK_MS : undefined;
-    res.json({ leaderboard: leaderboard(range) });
+    res.json({ leaderboard: leaderboard(programId, range) });
   });
 
   api.listen(config.apiPort, () => {

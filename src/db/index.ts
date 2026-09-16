@@ -30,6 +30,30 @@ db.exec(`
     user_id TEXT PRIMARY KEY,
     tab TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS programs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    help_channel_id TEXT NOT NULL UNIQUE,
+    bts_channel_id TEXT NOT NULL,
+    usergroup_id TEXT NOT NULL,
+    admin_user_id TEXT NOT NULL,
+    welcome_message TEXT,
+    faq_url TEXT,
+    admin_url_template TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS program_shortcuts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    label TEXT NOT NULL,
+    message TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_program_shortcuts_program_id ON program_shortcuts(program_id);
 `);
 
 function ensureColumn(table: string, column: string, columnDdl: string): void {
@@ -43,3 +67,5 @@ function ensureColumn(table: string, column: string, columnDdl: string): void {
 ensureColumn("tickets", "resolution_ts", "resolution_ts TEXT");
 ensureColumn("tickets", "resolution_note", "resolution_note TEXT");
 ensureColumn("tickets", "assigned_to", "assigned_to TEXT");
+ensureColumn("tickets", "program_id", "program_id INTEGER");
+ensureColumn("home_tab_prefs", "selected_program_id", "selected_program_id INTEGER");

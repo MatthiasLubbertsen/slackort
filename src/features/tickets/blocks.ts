@@ -1,8 +1,15 @@
 import type { KnownBlock } from "@slack/bolt";
-import { config } from "../../config";
 import type { Ticket } from "../../db/tickets";
+import type { Program } from "../../db/programs";
 
 const USER_INFO_ACTION_ID = "user_info_overflow";
+
+const DEFAULT_WELCOME_MESSAGE = "Hey {name}! Thanks for reaching out, a helper will be along shortly.";
+
+function renderWelcomeMessage(program: Program, openerName: string): string {
+  const template = program.welcome_message ?? DEFAULT_WELCOME_MESSAGE;
+  return template.replaceAll("{name}", openerName);
+}
 
 /** Tiny, staff-only overflow menu tucked onto a section, opens the user-info modal. */
 function staffOverflowAccessory(ticket: Ticket) {
@@ -19,24 +26,28 @@ function staffOverflowAccessory(ticket: Ticket) {
 }
 
 /** The bot's initial threaded reply: a greeting, the FAQ nudge, and (while open) the Resolve button. */
-export function buildTicketIntroBlocks(ticket: Ticket, openerName: string): KnownBlock[] {
+export function buildTicketIntroBlocks(
+  ticket: Ticket,
+  program: Program,
+  openerName: string
+): KnownBlock[] {
   const blocks: KnownBlock[] = [
     {
       type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `Hey ${openerName}! Thanks for reaching out, a helper will be along shortly.`,
-      },
+      text: { type: "mrkdwn", text: renderWelcomeMessage(program, openerName) },
       accessory: staffOverflowAccessory(ticket),
     },
-    {
+  ];
+
+  if (program.faq_url) {
+    blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `While you wait, take a peek at our <${config.faqCanvasUrl}|FAQ>, it answers most of the questions we get.`,
+        text: `While you wait, take a peek at our <${program.faq_url}|FAQ>, it answers most of the questions we get.`,
       },
-    },
-  ];
+    });
+  }
 
   if (ticket.status === "open") {
     blocks.push({

@@ -7,9 +7,10 @@ import {
   getTicketByMessageTs,
   setReplyTs,
 } from "../../db/tickets";
+import { getProgramByHelpChannel } from "../../db/programs";
 import { buildTicketIntroBlocks } from "./blocks";
 import { getFriendlyName } from "../../slack/userName";
-import { isHelper } from "../../slack/helpers";
+import { isUsergroupMember } from "../../slack/helpers";
 
 const SUBJECT_MAX_LENGTH = 120;
 
@@ -24,8 +25,10 @@ function subjectFromText(text: string | undefined): string {
 
 export function registerCreateTicketFromMessage(): void {
   app.message(async ({ message, client }) => {
-    if (message.channel !== config.supportChannelId) return;
     if (message.channel_type !== "channel" && message.channel_type !== "group") return;
+
+    const program = getProgramByHelpChannel(message.channel);
+    if (!program) return;
 
     // Skip edits/deletes/joins/bot posts.
     if ("subtype" in message && message.subtype && message.subtype !== "file_share") return;
@@ -39,7 +42,12 @@ export function registerCreateTicketFromMessage(): void {
       // A reply in some ticket's thread -- if nobody's claimed it yet and this
       // is a helper jumping in, that's the claim. Doesn't open a new ticket.
       const ticket = getTicketByMessageTs(message.channel, threadTs);
-      if (ticket && ticket.status === "open" && !ticket.assigned_to && (await isHelper(senderId))) {
+      if (
+        ticket &&
+        ticket.status === "open" &&
+        !ticket.assigned_to &&
+        (await isUsergroupMember(senderId, program.usergroup_id))
+      ) {
         claimTicket(ticket.id, senderId);
       }
       return;
@@ -88,13 +96,14 @@ export function registerCreateTicketFromMessage(): void {
       messageTs: message.ts,
       openerId,
       subject,
+      programId: program.id,
     });
 
     const reply = await client.chat.postMessage({
       channel: message.channel,
       thread_ts: message.ts,
       text: `Hey ${openerName}, a helper will be along shortly.`,
-      blocks: buildTicketIntroBlocks(ticket, openerName),
+      blocks: buildTicketIntroBlocks(ticket, program, openerName),
     });
 
     setReplyTs(ticket.id, reply.ts as string);

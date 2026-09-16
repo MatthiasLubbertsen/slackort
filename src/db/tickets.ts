@@ -13,6 +13,7 @@ export interface Ticket {
   subject: string;
   status: TicketStatus;
   assigned_to: string | null;
+  program_id: number;
   created_at: number;
   resolved_at: number | null;
   resolved_by: string | null;
@@ -31,19 +32,32 @@ export function ticketCategory(ticket: Ticket): TicketCategory {
   return ticket.assigned_to ? "in_progress" : "open";
 }
 
+/**
+ * Backfills `program_id` on any pre-existing tickets left over from before
+ * Programs existed: their channel_id already tells us which Program they
+ * belong to, they just never had the column. Safe to call on every boot,
+ * a no-op once nothing is left to backfill.
+ */
+export function backfillProgramId(programId: number, channelId: string): number {
+  return db
+    .prepare(`UPDATE tickets SET program_id = ? WHERE channel_id = ? AND program_id IS NULL`)
+    .run(programId, channelId).changes as number;
+}
+
 export function createTicket(input: {
   channelId: string;
   messageTs: string;
   openerId: string;
   subject: string;
+  programId: number;
 }): Ticket {
   const createdAt = Date.now();
   const result = db
     .prepare(
-      `INSERT INTO tickets (channel_id, message_ts, opener_id, subject, status, created_at)
-       VALUES (?, ?, ?, ?, 'open', ?)`
+      `INSERT INTO tickets (channel_id, message_ts, opener_id, subject, status, created_at, program_id)
+       VALUES (?, ?, ?, ?, 'open', ?, ?)`
     )
-    .run(input.channelId, input.messageTs, input.openerId, input.subject, createdAt);
+    .run(input.channelId, input.messageTs, input.openerId, input.subject, createdAt, input.programId);
   return getTicketById(Number(result.lastInsertRowid))!;
 }
 
@@ -93,10 +107,13 @@ export function claimTicket(ticketId: number, userId: string): Ticket {
   return getTicketById(ticketId)!;
 }
 
-export function getTicketsAssignedTo(userId: string): Ticket[] {
+export function getTicketsAssignedTo(userId: string, programId: number): Ticket[] {
   return db
-    .prepare(`SELECT * FROM tickets WHERE assigned_to = ? AND status = 'open' ORDER BY created_at ASC`)
-    .all(userId) as Ticket[];
+    .prepare(
+      `SELECT * FROM tickets WHERE assigned_to = ? AND program_id = ? AND status = 'open'
+       ORDER BY created_at ASC`
+    )
+    .all(userId, programId) as Ticket[];
 }
 
 export function getOpenTicketForUser(channelId: string, openerId: string): Ticket | undefined {
@@ -114,54 +131,59 @@ export interface UserTicketStats {
   resolved: number;
 }
 
-export function ticketStatsForUser(openerId: string): UserTicketStats {
+export function ticketStatsForUser(openerId: string, programId: number): UserTicketStats {
   const total = (
-    db.prepare(`SELECT COUNT(*) as c FROM tickets WHERE opener_id = ?`).get(openerId) as {
-      c: number;
-    }
+    db
+      .prepare(`SELECT COUNT(*) as c FROM tickets WHERE opener_id = ? AND program_id = ?`)
+      .get(openerId, programId) as { c: number }
   ).c;
   const open = (
     db
-      .prepare(`SELECT COUNT(*) as c FROM tickets WHERE opener_id = ? AND status = 'open'`)
-      .get(openerId) as { c: number }
+      .prepare(
+        `SELECT COUNT(*) as c FROM tickets WHERE opener_id = ? AND program_id = ? AND status = 'open'`
+      )
+      .get(openerId, programId) as { c: number }
   ).c;
   return { total, open, resolved: total - open };
 }
 
-export function countOpenTickets(): number {
-  const row = db.prepare(`SELECT COUNT(*) as c FROM tickets WHERE status = 'open'`).get() as {
-    c: number;
-  };
-  return row.c;
-}
-
-export function ticketsOpenedBetween(start: number, end: number): Ticket[] {
+export function ticketsOpenedBetween(programId: number, start: number, end: number): Ticket[] {
   return db
-    .prepare(`SELECT * FROM tickets WHERE created_at >= ? AND created_at < ?`)
-    .all(start, end) as Ticket[];
+    .prepare(`SELECT * FROM tickets WHERE program_id = ? AND created_at >= ? AND created_at < ?`)
+    .all(programId, start, end) as Ticket[];
 }
 
-export function ticketsResolvedBetween(start: number, end: number): Ticket[] {
+export function ticketsResolvedBetween(programId: number, start: number, end: number): Ticket[] {
   return db
     .prepare(
-      `SELECT * FROM tickets WHERE resolved_at IS NOT NULL AND resolved_at >= ? AND resolved_at < ?`
+      `SELECT * FROM tickets WHERE program_id = ? AND resolved_at IS NOT NULL AND resolved_at >= ? AND resolved_at < ?`
     )
-    .all(start, end) as Ticket[];
+    .all(programId, start, end) as Ticket[];
 }
 
-export function openTicketsCreatedBefore(end: number): Ticket[] {
+export function openTicketsCreatedBefore(programId: number, end: number): Ticket[] {
   return db
-    .prepare(`SELECT * FROM tickets WHERE status = 'open' AND created_at < ?`)
-    .all(end) as Ticket[];
+    .prepare(`SELECT * FROM tickets WHERE program_id = ? AND status = 'open' AND created_at < ?`)
+    .all(programId, end) as Ticket[];
 }
 
 export function listTickets(opts: {
+  programId?: number;
   status?: TicketStatus;
   limit: number;
   offset: number;
 }): { tickets: Ticket[]; total: number } {
-  const where = opts.status ? `WHERE status = ?` : "";
-  const params = opts.status ? [opts.status] : [];
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (opts.programId) {
+    conditions.push("program_id = ?");
+    params.push(opts.programId);
+  }
+  if (opts.status) {
+    conditions.push("status = ?");
+    params.push(opts.status);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const tickets = db
     .prepare(`SELECT * FROM tickets ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
@@ -181,10 +203,15 @@ export interface TicketCategoryCounts {
   closed: number;
 }
 
-/** Category breakdown, optionally restricted to tickets created since `sinceMs`. */
-export function ticketCategoryCounts(sinceMs?: number): TicketCategoryCounts {
-  const where = sinceMs ? `WHERE created_at >= ?` : "";
-  const params = sinceMs ? [sinceMs] : [];
+/** Category breakdown for one program, optionally restricted to tickets created since `sinceMs`. */
+export function ticketCategoryCounts(programId: number, sinceMs?: number): TicketCategoryCounts {
+  const conditions = ["program_id = ?"];
+  const params: unknown[] = [programId];
+  if (sinceMs) {
+    conditions.push("created_at >= ?");
+    params.push(sinceMs);
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const row = db
     .prepare(
@@ -205,22 +232,30 @@ export function ticketCategoryCounts(sinceMs?: number): TicketCategoryCounts {
   };
 }
 
-/** How many tickets were resolved since `sinceMs`, regardless of when they were created. */
-export function closedCountSince(sinceMs: number): number {
+/** How many of a program's tickets were resolved since `sinceMs`, regardless of when they were created. */
+export function closedCountSince(programId: number, sinceMs: number): number {
   const row = db
-    .prepare(`SELECT COUNT(*) as c FROM tickets WHERE resolved_at IS NOT NULL AND resolved_at >= ?`)
-    .get(sinceMs) as { c: number };
+    .prepare(
+      `SELECT COUNT(*) as c FROM tickets
+       WHERE program_id = ? AND resolved_at IS NOT NULL AND resolved_at >= ?`
+    )
+    .get(programId, sinceMs) as { c: number };
   return row.c;
 }
 
 /**
- * Average "hang time" in minutes: for resolved tickets that's time-to-resolve,
- * for still-open ones it's how long they've been sitting so far. Optionally
- * restricted to tickets created since `sinceMs`.
+ * Average "hang time" in minutes for one program: for resolved tickets that's
+ * time-to-resolve, for still-open ones it's how long they've been sitting so
+ * far. Optionally restricted to tickets created since `sinceMs`.
  */
-export function averageHangTimeMinutes(sinceMs?: number): number {
-  const where = sinceMs ? `WHERE created_at >= ?` : "";
-  const params = sinceMs ? [sinceMs] : [];
+export function averageHangTimeMinutes(programId: number, sinceMs?: number): number {
+  const conditions = ["program_id = ?"];
+  const params: unknown[] = [programId];
+  if (sinceMs) {
+    conditions.push("created_at >= ?");
+    params.push(sinceMs);
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const rows = db
     .prepare(`SELECT created_at, resolved_at FROM tickets ${where}`)
@@ -238,21 +273,21 @@ export interface LeaderboardRow {
   count: number;
 }
 
-export function leaderboard(sinceMs?: number): LeaderboardRow[] {
+export function leaderboard(programId: number, sinceMs?: number): LeaderboardRow[] {
   if (sinceMs) {
     return db
       .prepare(
         `SELECT resolved_by, COUNT(*) as count FROM tickets
-         WHERE status = 'resolved' AND resolved_at >= ?
+         WHERE program_id = ? AND status = 'resolved' AND resolved_at >= ?
          GROUP BY resolved_by ORDER BY count DESC LIMIT 10`
       )
-      .all(sinceMs) as LeaderboardRow[];
+      .all(programId, sinceMs) as LeaderboardRow[];
   }
   return db
     .prepare(
       `SELECT resolved_by, COUNT(*) as count FROM tickets
-       WHERE status = 'resolved'
+       WHERE program_id = ? AND status = 'resolved'
        GROUP BY resolved_by ORDER BY count DESC LIMIT 10`
     )
-    .all() as LeaderboardRow[];
+    .all(programId) as LeaderboardRow[];
 }
