@@ -143,11 +143,11 @@ Just the leaderboard rows for one Program. `programId` is required; `range` defa
 
 ## Nephthys-compatible proxy
 
-Everything under `/nepththys/:program/` reshapes the same ticket data above into the response shapes documented for [Nephthys](https://github.com/hackclub/nephthys/blob/main/docs/api.md), so anything already built against a real Nephthys instance can point at Hestia instead by swapping its base URL. This is a translation layer, not a reimplementation -- there's no Nephthys storage or Slack app underneath it, just a reshaping of Hestia's own Program data.
+Everything under `/nephthys/:program/` reshapes the same ticket data above into the response shapes documented for [Nephthys](https://github.com/hackclub/nephthys/blob/main/docs/api.md), so anything already built against a real Nephthys instance can point at Hestia instead by swapping its base URL. This is a translation layer, not a reimplementation -- there's no Nephthys storage or Slack app underneath it, just a reshaping of Hestia's own Program data.
 
 `:program` is a slug: the Program's `name`, lowercased, with runs of non-alphanumeric characters collapsed to single hyphens (e.g. "Hackatime Squad" -> `hackatime-squad`). `404` with `{"error": "..."}` if nothing matches.
 
-### `GET /nepththys/:program/api/stats_v2`
+### `GET /nephthys/:program/api/stats_v2`
 
 Same shape as Nephthys's own `stats_v2`: `all_time`, `past_24h`, `past_24h_previous`, `past_7d`, `past_7d_previous`, each with ticket counts, a helpers leaderboard, three mean-time-in-minutes fields, and (on `all_time` only) the oldest still-unclaimed ticket.
 
@@ -194,7 +194,7 @@ Each `TimeBoundStats` object (`past_24h` etc.) looks like:
 }
 ```
 
-### `GET /nepththys/:program/api/tickets`
+### `GET /nephthys/:program/api/tickets`
 
 Same query params as Nephthys documents (`status=open|closed|in_progress`, `since`/`after`, `until`/`before`, ISO 8601 dates), returning a bare array (not wrapped in an object, matching Nephthys):
 
@@ -216,7 +216,7 @@ Same query params as Nephthys documents (`status=open|closed|in_progress`, `sinc
 ]
 ```
 
-### `GET /nepththys/:program/api/ticket?id=<id>`
+### `GET /nephthys/:program/api/ticket?id=<id>`
 
 One ticket in the same shape as above. `404` if it doesn't exist or belongs to a different Program.
 

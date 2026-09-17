@@ -182,7 +182,7 @@ export function apiRouter(): express.Router {
 
   // A Nephthys-shaped read-only view of the same data, per Program, for
   // anything already built against Nephthys's API. See nephthysAdapter.ts.
-  router.use("/nepththys", nephthysRouter());
+  router.use("/nephthys", nephthysRouter());
 
   return router;
 }
